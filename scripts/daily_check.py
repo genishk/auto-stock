@@ -34,7 +34,7 @@ def main():
     # 최신 데이터
     latest = df.iloc[-1]
     current_date = df.index[-1].strftime('%Y-%m-%d')
-    current_rsi = latest.get('RSI', 0)
+    current_rsi = latest.get('rsi', 0)
     current_price = latest['Close']
     
     # 가격 정보
@@ -62,7 +62,7 @@ def main():
     # 매수 시그널 확인 (RSI 과매도 후 탈출)
     in_oversold = False
     for i in range(len(recent_df) - 1):
-        rsi = recent_df['RSI'].iloc[i]
+        rsi = recent_df['rsi'].iloc[i]
         if rsi < rsi_oversold_threshold:
             in_oversold = True
         elif in_oversold and rsi >= rsi_buy_exit_threshold:
@@ -78,7 +78,7 @@ def main():
     # 매도 시그널 확인 (RSI 과매수 후 하락)
     in_overbought = False
     for i in range(len(recent_df) - 1):
-        rsi = recent_df['RSI'].iloc[i]
+        rsi = recent_df['rsi'].iloc[i]
         if rsi > rsi_overbought_threshold:
             in_overbought = True
         elif in_overbought and rsi <= rsi_sell_exit_threshold:
