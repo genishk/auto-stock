@@ -1,0 +1,270 @@
+[
+  {
+    "timestamp": "2025-12-18T17:46:10.027472",
+    "signals": [],
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-12-18T17:53:55.712695",
+    "signals": [],
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-12-18T18:24:29.811170",
+    "signals": [
+      {
+        "type": "BUY",
+        "pattern": "Stochastic_Oversold",
+        "confidence": 0.9775416729080211,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "details": {
+          "stoch_k": 30.5218053583522,
+          "stoch_k_prev": 0.44916654183957855
+        },
+        "message": "\ud83d\udfe2 Stochastic_Oversold \ubc1c\uc0dd! \uc2e0\ub8b0\ub3c4: 98%"
+      },
+      {
+        "type": "BUY",
+        "pattern": "Williams_R_Oversold",
+        "confidence": 0.9775416729080213,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "details": {
+          "williams_r": -69.4781946416478,
+          "williams_r_prev": -99.55083345816043
+        },
+        "message": "\ud83d\udfe2 Williams_R_Oversold \ubc1c\uc0dd! \uc2e0\ub8b0\ub3c4: 98%"
+      },
+      {
+        "type": "BUY",
+        "pattern": "ATR_Breakout",
+        "confidence": 1.0,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "details": {
+          "atr": 8.357862200055804,
+          "breakout_level": 604.5889042445591,
+          "current_close": 609.1099853515625
+        },
+        "message": "\ud83d\udfe2 ATR_Breakout \ubc1c\uc0dd! \uc2e0\ub8b0\ub3c4: 100%"
+      },
+      {
+        "type": "BUY",
+        "pattern": "Ensemble_3+",
+        "confidence": 0.9850277819386809,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "patterns_triggered": [
+          "Stochastic_Oversold",
+          "Williams_R_Oversold",
+          "ATR_Breakout"
+        ],
+        "message": "\ud83d\udfe2 \uc559\uc0c1\ube14 \uc2e0\ud638! 3\uac1c: Stochastic_Oversold, Williams_R_Oversold, ATR_Breakout"
+      }
+    ],
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-12-18T18:24:54.506754",
+    "signals": [
+      {
+        "type": "BUY",
+        "pattern": "Stochastic_Oversold",
+        "confidence": 0.9775416729080211,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "details": {
+          "stoch_k": 30.5218053583522,
+          "stoch_k_prev": 0.44916654183957855
+        },
+        "message": "\ud83d\udfe2 Stochastic_Oversold \ubc1c\uc0dd! \uc2e0\ub8b0\ub3c4: 98%"
+      },
+      {
+        "type": "BUY",
+        "pattern": "Williams_R_Oversold",
+        "confidence": 0.9775416729080213,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "details": {
+          "williams_r": -69.4781946416478,
+          "williams_r_prev": -99.55083345816043
+        },
+        "message": "\ud83d\udfe2 Williams_R_Oversold \ubc1c\uc0dd! \uc2e0\ub8b0\ub3c4: 98%"
+      },
+      {
+        "type": "BUY",
+        "pattern": "ATR_Breakout",
+        "confidence": 1.0,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "details": {
+          "atr": 8.357862200055804,
+          "breakout_level": 604.5889042445591,
+          "current_close": 609.1099853515625
+        },
+        "message": "\ud83d\udfe2 ATR_Breakout \ubc1c\uc0dd! \uc2e0\ub8b0\ub3c4: 100%"
+      },
+      {
+        "type": "BUY",
+        "pattern": "Ensemble_3+",
+        "confidence": 0.9850277819386809,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "patterns_triggered": [
+          "Stochastic_Oversold",
+          "Williams_R_Oversold",
+          "ATR_Breakout"
+        ],
+        "message": "\ud83d\udfe2 \uc559\uc0c1\ube14 \uc2e0\ud638! 3\uac1c: Stochastic_Oversold, Williams_R_Oversold, ATR_Breakout"
+      }
+    ],
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-12-18T18:37:52.982944",
+    "signals": [
+      {
+        "type": "BUY",
+        "pattern": "Stochastic_Oversold",
+        "confidence": 0.9775416729080211,
+        "win_rate": 0.53125,
+        "expected_return": 9.425841178663998,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "details": {
+          "stoch_k": 30.5218053583522,
+          "stoch_k_prev": 0.44916654183957855
+        },
+        "validated": true,
+        "message": "\ud83d\udfe2 Stochastic_Oversold (\uac80\uc99d\ub428: \uc2b9\ub960 53%, \ud3c9\uade0 9.4%)"
+      },
+      {
+        "type": "BUY",
+        "pattern": "Williams_R_Oversold",
+        "confidence": 0.9775416729080213,
+        "win_rate": 0.53125,
+        "expected_return": 9.425841178663998,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "details": {
+          "williams_r": -69.4781946416478,
+          "williams_r_prev": -99.55083345816043
+        },
+        "validated": true,
+        "message": "\ud83d\udfe2 Williams_R_Oversold (\uac80\uc99d\ub428: \uc2b9\ub960 53%, \ud3c9\uade0 9.4%)"
+      },
+      {
+        "type": "BUY",
+        "pattern": "ATR_Breakout",
+        "confidence": 1.0,
+        "win_rate": 0.2967032967032967,
+        "expected_return": 6.650597779930307,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "details": {
+          "atr": 8.357862200055804,
+          "breakout_level": 604.5889042445591,
+          "current_close": 609.1099853515625
+        },
+        "validated": true,
+        "message": "\ud83d\udfe2 ATR_Breakout (\uac80\uc99d\ub428: \uc2b9\ub960 30%, \ud3c9\uade0 6.7%)"
+      },
+      {
+        "type": "BUY",
+        "pattern": "Ensemble_2+",
+        "confidence": 0.9850277819386809,
+        "win_rate": 0.2932330827067669,
+        "expected_return": 6.330823098380894,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "patterns_triggered": [
+          "Stochastic_Oversold",
+          "Williams_R_Oversold",
+          "ATR_Breakout"
+        ],
+        "validated": true,
+        "message": "\ud83d\udfe2 \uc559\uc0c1\ube14 (\uac80\uc99d\ub428): Stochastic_Oversold, Williams_R_Oversold, ATR_Breakout"
+      }
+    ],
+    "status": "success"
+  },
+  {
+    "timestamp": "2025-12-18T18:38:34.975636",
+    "signals": [
+      {
+        "type": "BUY",
+        "pattern": "Stochastic_Oversold",
+        "confidence": 0.9775416729080211,
+        "win_rate": 0.53125,
+        "expected_return": 9.425841178663998,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "details": {
+          "stoch_k": 30.5218053583522,
+          "stoch_k_prev": 0.44916654183957855
+        },
+        "validated": true,
+        "message": "\ud83d\udfe2 Stochastic_Oversold (\uac80\uc99d\ub428: \uc2b9\ub960 53%, \ud3c9\uade0 9.4%)"
+      },
+      {
+        "type": "BUY",
+        "pattern": "Williams_R_Oversold",
+        "confidence": 0.9775416729080213,
+        "win_rate": 0.53125,
+        "expected_return": 9.425841178663998,
+        "price": 609.1099853515625,
+        "date": "2025-12-18",
+        "days_ago": 0,
+        "market_regime": "SIDEWAYS",
+        "holding_period": 60,
+        "details": {
+          "williams_r": -69.4781946416478,
+          "williams_r_prev": -99.55083345816043
+        },
+        "validated": true,
+        "message": "\ud83d\udfe2 Williams_R_Oversold (\uac80\uc99d\ub428: \uc2b9\ub960 53%, \ud3c9\uade0 9.4%)"
+      }
+    ],
+    "status": "success"
+  }
+]

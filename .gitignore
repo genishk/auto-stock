@@ -1,0 +1,55 @@
+# 캐시 데이터 (매번 새로 받아야 함)
+data/cache/
+
+# 개인 거래 기록
+data/positions.json
+data/signals/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 가상환경
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 임시 파일
+*.log
+*.tmp
+.DS_Store
+
+# 테스트/분석 스크립트
+analyze_*.py
+compare_*.py
+test_*.py
+
+# 출력 파일
+outputs/
+*.png
+

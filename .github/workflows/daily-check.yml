@@ -1,0 +1,62 @@
+name: Daily Stock Signal Check
+
+on:
+  # 매일 자동 실행 (뉴욕 시간 오후 4:30 = UTC 21:30)
+  schedule:
+    - cron: '30 21 * * 1-5'  # 월-금, UTC 21:30 (뉴욕 4:30 PM)
+  
+  # 수동 실행도 가능
+  workflow_dispatch:
+
+jobs:
+  check-signals:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run signal check
+      id: signal_check
+      run: |
+        python main.py --lookback 1 > output.txt 2>&1
+        cat output.txt
+        
+        # 시그널 확인
+        if grep -q "오늘 신호" output.txt; then
+          echo "signal_found=true" >> $GITHUB_OUTPUT
+          echo "🟢 시그널 발견!"
+        else
+          echo "signal_found=false" >> $GITHUB_OUTPUT
+          echo "📭 시그널 없음"
+        fi
+    
+    - name: Send email notification (if signal found)
+      if: steps.signal_check.outputs.signal_found == 'true'
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: smtp.gmail.com
+        server_port: 587
+        username: ${{ secrets.EMAIL_USERNAME }}
+        password: ${{ secrets.EMAIL_PASSWORD }}
+        subject: "🟢 Auto-Stock 매수 시그널 발생!"
+        to: ${{ secrets.EMAIL_TO }}
+        from: Auto-Stock Bot
+        body: |
+          매수 시그널이 발생했습니다!
+          
+          자세한 내용은 대시보드에서 확인하세요.
+          
+          ---
+          ${{ github.server_url }}/${{ github.repository }}
+
