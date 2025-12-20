@@ -41,22 +41,25 @@ jobs:
           echo "📭 시그널 없음"
         fi
     
-    - name: Send email notification (if signal found)
-      if: steps.signal_check.outputs.signal_found == 'true'
+    - name: Send email notification
       uses: dawidd6/action-send-mail@v3
       with:
         server_address: smtp.gmail.com
         server_port: 587
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: "🟢 Auto-Stock 매수 시그널 발생!"
+        subject: "${{ steps.signal_check.outputs.signal_found == 'true' && '🟢 매수 시그널 발생!' || '📭 오늘 시그널 없음' }} - Auto-Stock"
         to: ${{ secrets.EMAIL_TO }}
         from: Auto-Stock Bot
         body: |
-          매수 시그널이 발생했습니다!
+          Auto-Stock 일일 리포트
+          ========================
           
-          자세한 내용은 대시보드에서 확인하세요.
+          ${{ steps.signal_check.outputs.signal_found == 'true' && '🟢 매수 시그널이 발생했습니다!' || '📭 오늘은 시그널이 없습니다.' }}
+          
+          자세한 내용:
+          ${{ github.server_url }}/${{ github.repository }}
           
           ---
-          ${{ github.server_url }}/${{ github.repository }}
+          실행 시간: ${{ github.event.repository.updated_at }}
 
