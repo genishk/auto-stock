@@ -28,100 +28,7 @@ jobs:
     
     - name: Run signal check
       id: signal_check
-      run: |
-        python -c "
-import sys
-sys.path.insert(0, '.')
-from src.data.cache import DataCache
-from src.data.fetcher import DataFetcher
-from src.data.validator import DataValidator
-from src.features.technical import TechnicalIndicators
-from src.discovery.validated_patterns import VALIDATED_PATTERNS
-from src.utils.helpers import load_config
-from datetime import datetime
-import json
-
-config = load_config()
-ticker = 'QQQ'
-
-# 데이터 로드
-cache = DataCache(cache_dir='data/cache', max_age_hours=24)
-df = cache.get(ticker)
-if df is None:
-    fetcher = DataFetcher([ticker])
-    data = fetcher.fetch('10y')
-    df = data[ticker]
-    df, _ = DataValidator.validate(df, ticker)
-    cache.set(ticker, df)
-
-indicators = TechnicalIndicators(config.get('indicators', {}))
-df = indicators.calculate_all(df)
-
-# 오늘 정보
-today = df.iloc[-1]
-today_date = df.index[-1].strftime('%Y-%m-%d')
-close = today['Close']
-open_p = today['Open']
-high = today['High']
-low = today['Low']
-rsi = today['rsi']
-
-# 매수 시그널 체크 (RSI < 35)
-rsi_pattern = None
-for p in VALIDATED_PATTERNS:
-    if p.name == 'RSI_Oversold_35':
-        rsi_pattern = p
-        break
-
-buy_signal = rsi_pattern.check(today) if rsi_pattern else False
-
-# 매도 시그널 체크 (RSI > 70)
-sell_signal = rsi > 70
-
-# 결과 출력
-print(f'DATE={today_date}')
-print(f'CLOSE={close:.2f}')
-print(f'OPEN={open_p:.2f}')
-print(f'HIGH={high:.2f}')
-print(f'LOW={low:.2f}')
-print(f'RSI={rsi:.1f}')
-print(f'BUY_SIGNAL={buy_signal}')
-print(f'SELL_SIGNAL={sell_signal}')
-
-if buy_signal:
-    print('SIGNAL_TYPE=BUY')
-elif sell_signal:
-    print('SIGNAL_TYPE=SELL')
-else:
-    print('SIGNAL_TYPE=NONE')
-" > result.txt 2>&1 || true
-        
-        cat result.txt
-        
-        # 결과 파싱
-        DATE=$(grep "DATE=" result.txt | cut -d= -f2 || echo "N/A")
-        CLOSE=$(grep "CLOSE=" result.txt | cut -d= -f2 || echo "N/A")
-        OPEN=$(grep "OPEN=" result.txt | cut -d= -f2 || echo "N/A")
-        HIGH=$(grep "HIGH=" result.txt | cut -d= -f2 || echo "N/A")
-        LOW=$(grep "LOW=" result.txt | cut -d= -f2 || echo "N/A")
-        RSI=$(grep "RSI=" result.txt | cut -d= -f2 || echo "N/A")
-        SIGNAL_TYPE=$(grep "SIGNAL_TYPE=" result.txt | cut -d= -f2 || echo "NONE")
-        
-        echo "date=$DATE" >> $GITHUB_OUTPUT
-        echo "close=$CLOSE" >> $GITHUB_OUTPUT
-        echo "open=$OPEN" >> $GITHUB_OUTPUT
-        echo "high=$HIGH" >> $GITHUB_OUTPUT
-        echo "low=$LOW" >> $GITHUB_OUTPUT
-        echo "rsi=$RSI" >> $GITHUB_OUTPUT
-        echo "signal_type=$SIGNAL_TYPE" >> $GITHUB_OUTPUT
-        
-        if [ "$SIGNAL_TYPE" = "BUY" ]; then
-          echo "🟢 매수 시그널!"
-        elif [ "$SIGNAL_TYPE" = "SELL" ]; then
-          echo "🔴 매도 시그널!"
-        else
-          echo "📭 시그널 없음"
-        fi
+      run: python scripts/daily_check.py
     
     - name: Send email notification
       uses: dawidd6/action-send-mail@v3
@@ -130,35 +37,39 @@ else:
         server_port: 587
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: "${{ steps.signal_check.outputs.signal_type == 'BUY' && '🟢 매수 시그널!' || steps.signal_check.outputs.signal_type == 'SELL' && '🔴 매도 시그널!' || '📭 시그널 없음' }} QQQ - Auto-Stock"
+        subject: |
+          ${{ steps.signal_check.outputs.signal_type == 'buy' && '🟢 매수 시그널!' || 
+              steps.signal_check.outputs.signal_type == 'sell' && '🔴 매도 시그널!' || 
+              '📭 오늘 시그널 없음' }} - Auto-Stock (${{ steps.signal_check.outputs.current_date }})
         to: ${{ secrets.EMAIL_TO }}
-        from: Auto-Stock Bot
+        from: Auto-Stock Bot <${{ secrets.EMAIL_USERNAME }}>
         body: |
           ═══════════════════════════════════════
           📊 Auto-Stock 일일 리포트
           ═══════════════════════════════════════
-          
-          📅 날짜: ${{ steps.signal_check.outputs.date }}
-          
+
+          📅 날짜: ${{ steps.signal_check.outputs.current_date }}
+
           💰 가격 정보
           ─────────────────────────────────────
-          시가: ${{ steps.signal_check.outputs.open }}
-          고가: ${{ steps.signal_check.outputs.high }}
-          저가: ${{ steps.signal_check.outputs.low }}
-          종가: ${{ steps.signal_check.outputs.close }}
-          
+          시가: ${{ steps.signal_check.outputs.open_price }}
+          고가: ${{ steps.signal_check.outputs.high_price }}
+          저가: ${{ steps.signal_check.outputs.low_price }}
+          종가: ${{ steps.signal_check.outputs.close_price }}
+
           📈 기술 지표
           ─────────────────────────────────────
-          RSI: ${{ steps.signal_check.outputs.rsi }}
-          
-          매수 기준: RSI < 35 (과매도)
-          매도 기준: RSI > 70 (과매수)
-          
+          RSI: ${{ steps.signal_check.outputs.current_rsi }}
+
+          매수 기준: RSI < ${{ steps.signal_check.outputs.rsi_buy_threshold }} → RSI >= ${{ steps.signal_check.outputs.rsi_buy_exit }}
+          매도 기준: RSI > ${{ steps.signal_check.outputs.rsi_sell_threshold }} → RSI <= ${{ steps.signal_check.outputs.rsi_sell_exit }}
+
           🚨 시그널
           ─────────────────────────────────────
-          ${{ steps.signal_check.outputs.signal_type == 'BUY' && '🟢 매수 시그널 발생! (RSI < 35)' || steps.signal_check.outputs.signal_type == 'SELL' && '🔴 매도 시그널 발생! (RSI > 70)' || '📭 오늘은 시그널 없음' }}
-          
-          ═══════════════════════════════════════
-          자세한 분석은 대시보드에서 확인하세요
-          ${{ github.server_url }}/${{ github.repository }}
+          ${{ steps.signal_check.outputs.signal_type == 'buy' && format('🟢 매수 시그널 발생!\n   매수 가격: ${0}', steps.signal_check.outputs.signal_price) || 
+              steps.signal_check.outputs.signal_type == 'sell' && format('🔴 매도 시그널 발생!\n   매도 가격: ${0}', steps.signal_check.outputs.signal_price) || 
+              '📭 오늘은 시그널이 없습니다.' }}
 
+          ═══════════════════════════════════════
+          
+          자세한 내용: https://github.com/genishk/auto-stock
