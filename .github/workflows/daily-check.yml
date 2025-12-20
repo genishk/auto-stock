@@ -29,8 +29,10 @@ jobs:
     - name: Run signal check
       id: signal_check
       run: |
-        python main.py --lookback 1 > output.txt 2>&1
+        python main.py --lookback 1 > output.txt 2>&1 || true
+        echo "=== OUTPUT ==="
         cat output.txt
+        echo "=== END OUTPUT ==="
         
         # 시그널 확인
         if grep -q "오늘 신호" output.txt; then
