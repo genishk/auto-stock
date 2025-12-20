@@ -28,8 +28,8 @@ def main():
         cache.set(ticker, df)
     
     # 기술 지표 계산
-    ti = TechnicalIndicators(df)
-    df = ti.add_all_indicators()
+    ti = TechnicalIndicators(config.get('indicators', {}))
+    df = ti.calculate_all(df)
     
     # 최신 데이터
     latest = df.iloc[-1]
