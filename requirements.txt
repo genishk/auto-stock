@@ -6,6 +6,7 @@ yfinance>=0.2.18
 # 데이터 처리
 pandas>=2.0.0
 numpy>=1.24.0
+pyarrow>=14.0.0
 
 # 시각화
 matplotlib>=3.7.0
