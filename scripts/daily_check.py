@@ -25,7 +25,7 @@ def main():
         data = fetcher.fetch('10y')
         df = data[ticker]
         df, _ = DataValidator.validate(df, ticker)
-        cache.save(ticker, df)
+        cache.set(ticker, df)
     
     # 기술 지표 계산
     ti = TechnicalIndicators(df)
