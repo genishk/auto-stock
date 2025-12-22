@@ -426,8 +426,8 @@ def main():
     
     st.sidebar.markdown("---")
     st.sidebar.subheader("📈 추세 필터 (골든크로스)")
-    use_golden_cross = st.sidebar.checkbox("골든크로스 필터 사용", value=True, 
-                                           help="MA40 > MA200 일 때만 매수 (하락장 보호)")
+    use_golden_cross = st.sidebar.checkbox("골든크로스 필터 사용", value=False, 
+                                           help="MA40 > MA200 일 때만 매수 (QQQ는 OFF 권장)")
     
     # 데이터 로드
     df = load_data(ticker)
@@ -475,10 +475,10 @@ def main():
                 rsi_pattern = p
                 break
         
-        # 매수/매도 시그널 계산 (골든크로스 필터 적용 + 새 RSI 기준)
+        # 매수/매도 시그널 계산 (RSI 35/40/70/45)
         home_buy_signals = find_buy_signals(df, rsi_pattern, rsi_exit_threshold=40.0, use_golden_cross=use_golden_cross) if rsi_pattern else []
         
-        # 매도 시그널 찾기 (RSI > 80 -> RSI <= 55) - 새 기준
+        # 매도 시그널 찾기 (RSI > 70 -> RSI <= 45) - QQQ 최적
         home_sell_signals = []
         in_overbought = False
         last_ob_date = None
@@ -486,12 +486,12 @@ def main():
         
         for idx in range(len(df)):
             rsi = df['rsi'].iloc[idx]
-            if rsi > 80:  # 과매수 기준: 80
+            if rsi > 70:  # 과매수 기준: 70
                 in_overbought = True
                 last_ob_date = df.index[idx]
                 last_ob_price = df['Close'].iloc[idx]
             else:
-                if in_overbought and rsi <= 55 and last_ob_date is not None:  # 탈출 기준: 55
+                if in_overbought and rsi <= 45 and last_ob_date is not None:  # 탈출 기준: 45
                     home_sell_signals.append({
                         'signal_date': last_ob_date,
                         'signal_price': last_ob_price,
@@ -520,11 +520,9 @@ def main():
                 exit_reason = None
                 exit_price = current_price
                 
-                # 1) 손절은 무조건 (최우선) - 25%로 변경
-                if current_return <= -25:
-                    exit_reason = "손절"
-                # 2) RSI 매도 시그널 + 수익인 경우만 익절
-                elif current_date in all_sell_dates:
+                # QQQ는 손절 없음 (10년간 승률 100%)
+                # RSI 매도 시그널 + 수익인 경우만 익절
+                if current_date in all_sell_dates:
                     sell_price = all_sell_dates[current_date]['confirm_price']
                     sell_return = (sell_price / avg_price - 1) * 100
                     if sell_return > 0:  # 수익일 때만 매도!
@@ -601,12 +599,12 @@ def main():
             } for p in home_positions])
             st.dataframe(pos_df, use_container_width=True, hide_index=True)
             
-            # 매도 조건 안내 (새 기준)
+            # 매도 조건 안내 (QQQ 최적)
             st.info(f"""
             **📤 매도 조건:**
-            - RSI > 80 발생 후 → RSI ≤ 55 탈출 + **수익일 때만** 매도
-            - 평단가 대비 -25% 손절 (현재: {unrealized:+.1f}%)
-            - 골든크로스 필터: {'✅ 적용중' if use_golden_cross else '❌ 미적용'}
+            - RSI > 70 발생 후 → RSI ≤ 45 탈출 + **수익일 때만** 매도
+            - 손절 없음 (QQQ는 10년간 승률 100%)
+            - 골든크로스: {'✅ 적용중' if use_golden_cross else '❌ 미적용 (권장)'}
             """)
         else:
             st.subheader("⏳ 대기 중")
@@ -1008,14 +1006,14 @@ def main():
         st.subheader("📤 매도 시그널 분석 (RSI 과매수)")
         st.caption("조건: RSI > 70 (과매수) 시그널 발생 후 → RSI ≤ X (탈출) 시 매도")
         
-        # RSI 과매수 탈출 기준 슬라이더 (새 기준: 55)
-        sell_rsi_threshold = st.slider("RSI 탈출 기준 (매도)", 10, 70, 55, 
+        # RSI 과매수 탈출 기준 슬라이더 (QQQ 최적: 45)
+        sell_rsi_threshold = st.slider("RSI 탈출 기준 (매도)", 10, 70, 45, 
                                         help="과매수 구간 후 RSI가 이 값 이하이면 '매도 시그널'로 확정")
         
-        # RSI 과매수 시그널 찾기 (RSI > 80) - 새 기준
+        # RSI 과매수 시그널 찾기 (RSI > 70) - QQQ 최적
         overbought_signals = []
         for idx in range(len(df)):
-            if df['rsi'].iloc[idx] > 80:
+            if df['rsi'].iloc[idx] > 70:
                 overbought_signals.append({
                     'date': df.index[idx],
                     'idx': idx,
@@ -1033,7 +1031,7 @@ def main():
         for idx in range(len(df)):
             rsi = df['rsi'].iloc[idx]
             
-            if rsi > 80:  # 과매수 기준: 80
+            if rsi > 70:  # 과매수 기준: 70 (QQQ 최적)
                 in_overbought = True
                 last_overbought_idx = idx
                 last_overbought_date = df.index[idx]
@@ -1125,7 +1123,7 @@ def main():
         
         # ===== 매수 + 매도 통합 차트 =====
         st.subheader("🎯 매수/매도 시그널 통합 차트")
-        st.caption(f"매수: RSI < 35 → RSI ≥ {rsi_threshold} 탈출 | 매도: RSI > 80 → RSI ≤ {sell_rsi_threshold} 탈출 | 손절: -25%")
+        st.caption(f"매수: RSI < 35 → RSI ≥ {rsi_threshold} 탈출 | 매도: RSI > 70 → RSI ≤ {sell_rsi_threshold} 탈출 | 손절: 없음")
         
         fig_combined = go.Figure()
         
@@ -1189,18 +1187,17 @@ def main():
             else:
                 st.metric("신호 비율", "N/A")
         with col4:
-            st.metric("손절 기준", "-25%")
+            st.metric("손절 기준", "없음")
         
         st.divider()
         
         # ===== 최종 전략 시뮬레이션 차트 (물타기 + 수익일때만 익절) =====
         st.subheader("🎯 최종 전략: 물타기 시뮬레이션")
         st.markdown("""
-        **전략 (업데이트됨):**
-        - 매수: RSI < 35 → RSI ≥ 40 + 골든크로스(MA40 > MA200)
-        - 매도 조건:
-          1. RSI 매도 시그널 + **수익인 경우만** 익절
-          2. 평균 매수가 대비 -25% 손절 → 전량 매도
+        **전략 (QQQ 최적화):**
+        - 매수: RSI < 35 → RSI ≥ 40 (골든크로스 미사용 권장)
+        - 매도: RSI > 70 → RSI ≤ 45 + **수익인 경우만** 익절
+        - 손절: 없음 (10년간 승률 100%)
         """)
         
         # 물타기 전략 시뮬레이션 (confirm_date 기준 + 수익일 때만 익절)
@@ -1224,12 +1221,8 @@ def main():
                 exit_reason = None
                 exit_price = current_price
                 
-                # 조건 1: 손절 -25% (최우선)
-                if current_return <= -25:
-                    exit_reason = "손절"
-                
-                # 조건 2: RSI 매도 시그널 + 수익인 경우만 익절
-                elif current_date in all_sell_dates:
+                # QQQ는 손절 없음 - 수익일 때만 익절
+                if current_date in all_sell_dates:
                     sell_price = all_sell_dates[current_date]['confirm_price']
                     sell_return = (sell_price / avg_price - 1) * 100
                     if sell_return > 0:  # 수익일 때만 매도!

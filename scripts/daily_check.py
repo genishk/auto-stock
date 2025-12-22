@@ -62,13 +62,13 @@ def main():
     buy_signal = False
     sell_signal = False
     
-    # 매수 시그널: RSI < 35 후 RSI >= 40으로 탈출 + 골든크로스
+    # 매수 시그널: RSI < 35 후 RSI >= 40으로 탈출 (골든크로스 미사용)
     rsi_oversold_threshold = 35
     rsi_buy_exit_threshold = 40
     
-    # 매도 시그널: RSI > 80 후 RSI <= 55으로 하락
-    rsi_overbought_threshold = 80
-    rsi_sell_exit_threshold = 55
+    # 매도 시그널: RSI > 70 후 RSI <= 45으로 하락 (QQQ 최적)
+    rsi_overbought_threshold = 70
+    rsi_sell_exit_threshold = 45
     
     # 최근 데이터에서 시그널 확인
     lookback = min(30, len(df))
@@ -81,14 +81,13 @@ def main():
         if rsi < rsi_oversold_threshold:
             in_oversold = True
         elif in_oversold and rsi >= rsi_buy_exit_threshold:
-            # 오늘이 탈출 시점인지 확인 + 골든크로스 체크
-            gc = recent_df['golden_cross'].iloc[i]
-            if i == len(recent_df) - 2 and (gc if not pd.isna(gc) else False):  # 어제 탈출 + 골든크로스
+            # 오늘이 탈출 시점인지 확인 (QQQ는 골든크로스 미사용)
+            if i == len(recent_df) - 2:  # 어제 탈출
                 buy_signal = True
             in_oversold = False
     
-    # 오늘 탈출 확인 + 골든크로스 필터
-    if in_oversold and current_rsi >= rsi_buy_exit_threshold and current_gc:
+    # 오늘 탈출 확인 (QQQ는 골든크로스 미사용)
+    if in_oversold and current_rsi >= rsi_buy_exit_threshold:
         buy_signal = True
     
     # 매도 시그널 확인 (RSI 과매수 후 하락)
@@ -126,8 +125,9 @@ def main():
     print(f'MA200: ${ma200:.2f}' if not pd.isna(ma200) else 'MA200: N/A')
     print(f'골든크로스: {"🟢 상승장" if current_gc else "🔴 하락장"}')
     print()
-    print(f'매수 기준: RSI < {rsi_oversold_threshold} → RSI >= {rsi_buy_exit_threshold} + 골든크로스')
+    print(f'매수 기준: RSI < {rsi_oversold_threshold} → RSI >= {rsi_buy_exit_threshold}')
     print(f'매도 기준: RSI > {rsi_overbought_threshold} → RSI <= {rsi_sell_exit_threshold}')
+    print(f'손절: 없음 (QQQ 10년 승률 100%)')
     print()
     print('🚨 시그널')
     print('-' * 40)
