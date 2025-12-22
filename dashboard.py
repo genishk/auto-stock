@@ -64,6 +64,11 @@ def load_data(ticker: str):
     if df is not None:
         indicators = TechnicalIndicators(config.get('indicators', {}))
         df = indicators.calculate_all(df)
+        
+        # 골든크로스용 이동평균선 추가
+        df['MA40'] = df['Close'].rolling(window=40).mean()
+        df['MA200'] = df['Close'].rolling(window=200).mean()
+        df['golden_cross'] = df['MA40'] > df['MA200']
     
     return df
 
@@ -226,12 +231,12 @@ def plot_pattern_performance():
     return fig
 
 
-def find_buy_signals(df: pd.DataFrame, pattern, rsi_exit_threshold: float = 40.0):
+def find_buy_signals(df: pd.DataFrame, pattern, rsi_exit_threshold: float = 40.0, use_golden_cross: bool = True):
     """
-    실제 매수 시그널 찾기 (RSI 탈출 방식)
+    실제 매수 시그널 찾기 (RSI 탈출 방식 + 골든크로스 필터)
     
     조건: 시그널 구간이 끝나고 RSI가 threshold 이상으로 올라올 때
-    → 그 시그널 구간의 마지막 시그널 날짜를 "매수 시그널"로 반환
+    + 골든크로스 필터: MA40 > MA200 일 때만 매수 허용
     """
     buy_signals = []
     
@@ -245,6 +250,12 @@ def find_buy_signals(df: pd.DataFrame, pattern, rsi_exit_threshold: float = 40.0
         is_signal = pattern.check(row)
         rsi = row.get('rsi', 50)
         
+        # 골든크로스 체크
+        golden_cross_ok = True
+        if use_golden_cross and 'golden_cross' in df.columns:
+            gc = df['golden_cross'].iloc[idx]
+            golden_cross_ok = gc if not pd.isna(gc) else False
+        
         if is_signal:
             # 시그널 구간 진입 또는 유지
             in_signal_zone = True
@@ -255,14 +266,15 @@ def find_buy_signals(df: pd.DataFrame, pattern, rsi_exit_threshold: float = 40.0
             # 시그널 없음
             if in_signal_zone:
                 # 시그널 구간에서 나옴
-                # RSI가 threshold 이상이면 → 매수 시그널 확정
-                if rsi >= rsi_exit_threshold and last_signal_date is not None:
+                # RSI가 threshold 이상이면 + 골든크로스 → 매수 시그널 확정
+                if rsi >= rsi_exit_threshold and last_signal_date is not None and golden_cross_ok:
                     buy_signals.append({
                         'signal_date': last_signal_date,  # 마지막 시그널 날짜
                         'signal_price': last_signal_price,
-                        'confirm_date': df.index[idx],    # RSI 탈출 확인 날짜
+                        'confirm_date': df.index[idx],    # RSI 탈출 확인 날짜 (실제 매수 시점!)
                         'confirm_price': row['Close'],
-                        'rsi_at_confirm': rsi
+                        'rsi_at_confirm': rsi,
+                        'golden_cross': golden_cross_ok
                     })
                     in_signal_zone = False
                     last_signal_date = None
@@ -271,8 +283,8 @@ def find_buy_signals(df: pd.DataFrame, pattern, rsi_exit_threshold: float = 40.0
     return buy_signals
 
 
-def plot_pattern_occurrences(df: pd.DataFrame, pattern_name: str, rsi_threshold: float = 40.0):
-    """특정 패턴의 발생 시점 시각화 (매수 시그널 포함)"""
+def plot_pattern_occurrences(df: pd.DataFrame, pattern_name: str, rsi_threshold: float = 40.0, use_golden_cross: bool = True):
+    """특정 패턴의 발생 시점 시각화 (매수 시그널 포함, 골든크로스 필터)"""
     pattern = None
     for p in VALIDATED_PATTERNS:
         if p.name == pattern_name:
@@ -280,7 +292,7 @@ def plot_pattern_occurrences(df: pd.DataFrame, pattern_name: str, rsi_threshold:
             break
     
     if not pattern:
-        return go.Figure(), []
+        return go.Figure(), [], []
     
     # Train/Test 분할 (70/30)
     split_idx = int(len(df) * 0.7)
@@ -298,8 +310,8 @@ def plot_pattern_occurrences(df: pd.DataFrame, pattern_name: str, rsi_threshold:
                 'period': 'Train' if idx < split_idx else 'Test'
             })
     
-    # 실제 매수 시그널 찾기 (RSI 탈출 방식)
-    buy_signals = find_buy_signals(df, pattern, rsi_threshold)
+    # 실제 매수 시그널 찾기 (RSI 탈출 방식 + 골든크로스 필터)
+    buy_signals = find_buy_signals(df, pattern, rsi_threshold, use_golden_cross)
     buy_signal_dates = set(bs['signal_date'] for bs in buy_signals)
     
     fig = go.Figure()
@@ -327,18 +339,18 @@ def plot_pattern_occurrences(df: pd.DataFrame, pattern_name: str, rsi_threshold:
         hovertemplate='%{x}<br>가격: $%{y:.2f}<extra>시그널</extra>'
     ))
     
-    # 실제 매수 시그널 (RSI 탈출 확인된 것) - 진한 초록색
-    buy_dates = [bs['signal_date'] for bs in buy_signals]
-    buy_prices = [bs['signal_price'] for bs in buy_signals]
+    # 실제 매수 시그널 (confirm_date 기준 = 실제 매수 시점!)
+    buy_dates = [bs['confirm_date'] for bs in buy_signals]
+    buy_prices = [bs['confirm_price'] for bs in buy_signals]
     
     fig.add_trace(go.Scatter(
         x=buy_dates,
         y=buy_prices,
         mode='markers',
-        name=f'★ 매수 시그널 ({len(buy_signals)}회)',
-        marker=dict(color='limegreen', size=10, symbol='circle',
-                    line=dict(color='darkgreen', width=2)),
-        hovertemplate='%{x}<br>가격: $%{y:.2f}<br>★ 매수 시그널<extra></extra>'
+        name=f'★ 실제 매수 ({len(buy_signals)}회)',
+        marker=dict(color='limegreen', size=6, symbol='circle',
+                    line=dict(color='darkgreen', width=1)),
+        hovertemplate='%{x}<br>매수가: $%{y:.2f}<br>★ 실제 매수 시점<extra></extra>'
     ))
     
     # Train/Test 분할선 - 문자열로 변환하여 호환성 문제 해결
@@ -412,6 +424,11 @@ def main():
     # 전체 데이터 기간 계산 (로드 후 설정)
     lookback_days = st.sidebar.slider("신호 확인 기간 (일)", 30, 3650, 365)
     
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📈 추세 필터 (골든크로스)")
+    use_golden_cross = st.sidebar.checkbox("골든크로스 필터 사용", value=True, 
+                                           help="MA40 > MA200 일 때만 매수 (하락장 보호)")
+    
     # 데이터 로드
     df = load_data(ticker)
     
@@ -421,6 +438,14 @@ def main():
     
     st.sidebar.success(f"✅ {len(df)}일 데이터 로드")
     st.sidebar.info(f"📅 {df.index[0].date()} ~ {df.index[-1].date()}")
+    
+    # 현재 골든크로스 상태
+    current_gc = df['golden_cross'].iloc[-1] if 'golden_cross' in df.columns else False
+    if use_golden_cross:
+        if current_gc:
+            st.sidebar.success("🟢 골든크로스 (매수 허용)")
+        else:
+            st.sidebar.warning("🔴 데드크로스 (매수 차단)")
     
     # 탭 구성
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -450,10 +475,10 @@ def main():
                 rsi_pattern = p
                 break
         
-        # 매수/매도 시그널 계산
-        home_buy_signals = find_buy_signals(df, rsi_pattern, rsi_exit_threshold=60.0) if rsi_pattern else []
+        # 매수/매도 시그널 계산 (골든크로스 필터 적용 + 새 RSI 기준)
+        home_buy_signals = find_buy_signals(df, rsi_pattern, rsi_exit_threshold=40.0, use_golden_cross=use_golden_cross) if rsi_pattern else []
         
-        # 매도 시그널 찾기 (RSI > 70 -> RSI <= 50)
+        # 매도 시그널 찾기 (RSI > 80 -> RSI <= 55) - 새 기준
         home_sell_signals = []
         in_overbought = False
         last_ob_date = None
@@ -461,12 +486,12 @@ def main():
         
         for idx in range(len(df)):
             rsi = df['rsi'].iloc[idx]
-            if rsi > 70:
+            if rsi > 80:  # 과매수 기준: 80
                 in_overbought = True
                 last_ob_date = df.index[idx]
                 last_ob_price = df['Close'].iloc[idx]
             else:
-                if in_overbought and rsi <= 50 and last_ob_date is not None:
+                if in_overbought and rsi <= 55 and last_ob_date is not None:  # 탈출 기준: 55
                     home_sell_signals.append({
                         'signal_date': last_ob_date,
                         'signal_price': last_ob_price,
@@ -476,9 +501,9 @@ def main():
                     in_overbought = False
                     last_ob_date = None
         
-        # 물타기 시뮬레이션
-        all_buy_dates = {bs['signal_date']: bs for bs in home_buy_signals}
-        all_sell_dates = {ss['signal_date']: ss for ss in home_sell_signals}
+        # 물타기 시뮬레이션 (confirm_date 기준 + 수익일 때만 익절)
+        all_buy_dates = {bs['confirm_date']: bs for bs in home_buy_signals}
+        all_sell_dates = {ss['confirm_date']: ss for ss in home_sell_signals}
         
         home_trades = []
         home_positions = []
@@ -495,16 +520,23 @@ def main():
                 exit_reason = None
                 exit_price = current_price
                 
-                if current_date in all_sell_dates:
-                    exit_reason = "RSI 매도"
-                    exit_price = all_sell_dates[current_date]['signal_price']
-                elif current_return <= -15:
-                    exit_reason = "-15% 손절"
+                # 1) 손절은 무조건 (최우선) - 25%로 변경
+                if current_return <= -25:
+                    exit_reason = "손절"
+                # 2) RSI 매도 시그널 + 수익인 경우만 익절
+                elif current_date in all_sell_dates:
+                    sell_price = all_sell_dates[current_date]['confirm_price']
+                    sell_return = (sell_price / avg_price - 1) * 100
+                    if sell_return > 0:  # 수익일 때만 매도!
+                        exit_reason = "익절"
+                        exit_price = sell_price
+                    # 손해면 매도하지 않음 (계속 보유)
                 
                 if exit_reason:
                     final_return = (exit_price / avg_price - 1) * 100
                     home_trades.append({
                         'entry_dates': [p['date'] for p in home_positions],
+                        'entry_prices': [p['price'] for p in home_positions],
                         'avg_price': avg_price,
                         'num_buys': len(home_positions),
                         'exit_date': current_date,
@@ -517,24 +549,28 @@ def main():
             if current_date in all_buy_dates:
                 home_positions.append({
                     'date': current_date,
-                    'price': all_buy_dates[current_date]['signal_price']
+                    'price': all_buy_dates[current_date]['confirm_price']
                 })
         
         # ===== 현재 상태 표시 =====
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             st.metric("현재가", f"${current:.2f}", f"{change:+.2f}%")
         with col2:
-            rsi_status = "🔴 과매도" if rsi_now < 35 else ("🟢 과매수" if rsi_now > 70 else "⚪ 중립")
+            rsi_status = "🔴 과매도" if rsi_now < 35 else ("🟢 과매수" if rsi_now > 80 else "⚪ 중립")
             st.metric("RSI", f"{rsi_now:.1f}", delta=rsi_status)
         with col3:
+            # 골든크로스 상태
+            gc_status = "🟢 상승장" if current_gc else "🔴 하락장"
+            st.metric("추세 (MA40/200)", gc_status)
+        with col4:
             if home_positions:
                 avg_p = sum(p['price'] for p in home_positions) / len(home_positions)
                 unrealized = (current / avg_p - 1) * 100
                 st.metric("보유 상태", f"{len(home_positions)}회 물타기", delta=f"{unrealized:+.1f}%")
             else:
                 st.metric("보유 상태", "대기 중")
-        with col4:
+        with col5:
             if home_trades:
                 win_rate = len([t for t in home_trades if t['return'] > 0]) / len(home_trades) * 100
                 st.metric("전체 승률", f"{win_rate:.0f}%")
@@ -565,11 +601,12 @@ def main():
             } for p in home_positions])
             st.dataframe(pos_df, use_container_width=True, hide_index=True)
             
-            # 매도 조건 안내
+            # 매도 조건 안내 (새 기준)
             st.info(f"""
             **📤 매도 조건:**
-            - RSI > 70 발생 후 → RSI ≤ 50 탈출 시 매도
-            - 평단가 대비 -15% 손절 (현재: {unrealized:+.1f}%)
+            - RSI > 80 발생 후 → RSI ≤ 55 탈출 + **수익일 때만** 매도
+            - 평단가 대비 -25% 손절 (현재: {unrealized:+.1f}%)
+            - 골든크로스 필터: {'✅ 적용중' if use_golden_cross else '❌ 미적용'}
             """)
         else:
             st.subheader("⏳ 대기 중")
@@ -583,30 +620,33 @@ def main():
         # 슬라이더 기간 내 시그널 필터링
         signal_cutoff = df.index[-1] - pd.Timedelta(days=lookback_days)
         
-        # 기간 내 매수/매도 시그널
-        filtered_buys = [bs for bs in home_buy_signals if bs['signal_date'] >= signal_cutoff]
-        filtered_sells = [ss for ss in home_sell_signals if ss['signal_date'] >= signal_cutoff]
+        # 기간 내 매수/매도 시그널 (confirm_date 기준 = 실제 매수/매도 시점)
+        filtered_buys = [bs for bs in home_buy_signals if bs['confirm_date'] >= signal_cutoff]
+        filtered_sells = [ss for ss in home_sell_signals if ss['confirm_date'] >= signal_cutoff]
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**🟢 매수 시그널**")
+            st.markdown("**🟢 매수 시그널** (실제 매수 시점)")
             if filtered_buys:
                 buy_df = pd.DataFrame([{
-                    '날짜': bs['signal_date'].strftime('%Y-%m-%d'),
-                    '가격': f"${bs['signal_price']:.2f}"
-                } for bs in sorted(filtered_buys, key=lambda x: x['signal_date'], reverse=True)])
+                    '매수일': bs['confirm_date'].strftime('%Y-%m-%d'),
+                    '매수가': f"${bs['confirm_price']:.2f}",
+                    'RSI': f"{bs['rsi_at_confirm']:.1f}",
+                    '시그널시작': bs['signal_date'].strftime('%m-%d')
+                } for bs in sorted(filtered_buys, key=lambda x: x['confirm_date'], reverse=True)])
                 st.dataframe(buy_df, use_container_width=True, hide_index=True)
             else:
                 st.info("없음")
         
         with col2:
-            st.markdown("**🔴 매도 시그널**")
+            st.markdown("**🔴 매도 시그널** (실제 매도 시점)")
             if filtered_sells:
                 sell_df = pd.DataFrame([{
-                    '날짜': ss['signal_date'].strftime('%Y-%m-%d'),
-                    '가격': f"${ss['signal_price']:.2f}"
-                } for ss in sorted(filtered_sells, key=lambda x: x['signal_date'], reverse=True)])
+                    '매도일': ss['confirm_date'].strftime('%Y-%m-%d'),
+                    '매도가': f"${ss['confirm_price']:.2f}",
+                    '시그널시작': ss['signal_date'].strftime('%m-%d')
+                } for ss in sorted(filtered_sells, key=lambda x: x['confirm_date'], reverse=True)])
                 st.dataframe(sell_df, use_container_width=True, hide_index=True)
             else:
                 st.info("없음")
@@ -637,28 +677,46 @@ def main():
             name='가격'
         ))
         
-        # 매수 시그널 표시
+        # MA40/MA200 라인 추가 (골든크로스 시각화)
+        if 'MA40' in chart_df.columns:
+            fig_home.add_trace(go.Scatter(
+                x=chart_df.index,
+                y=chart_df['MA40'],
+                mode='lines',
+                line=dict(color='orange', width=1.5),
+                name='MA40'
+            ))
+        if 'MA200' in chart_df.columns:
+            fig_home.add_trace(go.Scatter(
+                x=chart_df.index,
+                y=chart_df['MA200'],
+                mode='lines',
+                line=dict(color='purple', width=1.5),
+                name='MA200'
+            ))
+        
+        # 매수 시그널 표시 (confirm_date 기준 = 실제 매수 시점)
         for bs in filtered_buys:
             fig_home.add_trace(go.Scatter(
-                x=[bs['signal_date']],
-                y=[bs['signal_price']],
+                x=[bs['confirm_date']],
+                y=[bs['confirm_price']],
                 mode='markers',
                 marker=dict(color='limegreen', size=14, symbol='triangle-up',
                             line=dict(color='darkgreen', width=2)),
                 showlegend=False,
-                hovertemplate=f"매수: ${bs['signal_price']:.2f}<br>{bs['signal_date'].strftime('%Y-%m-%d')}<extra></extra>"
+                hovertemplate=f"매수: ${bs['confirm_price']:.2f}<br>{bs['confirm_date'].strftime('%Y-%m-%d')}<extra></extra>"
             ))
         
-        # 매도 시그널 표시
+        # 매도 시그널 표시 (confirm_date 기준 = 실제 매도 시점)
         for ss in filtered_sells:
             fig_home.add_trace(go.Scatter(
-                x=[ss['signal_date']],
-                y=[ss['signal_price']],
+                x=[ss['confirm_date']],
+                y=[ss['confirm_price']],
                 mode='markers',
                 marker=dict(color='red', size=14, symbol='triangle-down',
                             line=dict(color='darkred', width=2)),
                 showlegend=False,
-                hovertemplate=f"매도: ${ss['signal_price']:.2f}<br>{ss['signal_date'].strftime('%Y-%m-%d')}<extra></extra>"
+                hovertemplate=f"매도: ${ss['confirm_price']:.2f}<br>{ss['confirm_date'].strftime('%Y-%m-%d')}<extra></extra>"
             ))
         
         fig_home.update_layout(
@@ -884,13 +942,13 @@ def main():
         default_idx = pattern_names.index("RSI_Oversold_35") if "RSI_Oversold_35" in pattern_names else 0
         selected_pattern = st.selectbox("패턴 선택", pattern_names, index=default_idx)
         
-        # RSI 탈출 기준 슬라이더
+        # RSI 탈출 기준 슬라이더 (새 기준: 40)
         st.markdown("**매수 시그널 조건**: 시그널 종료 후 RSI가 아래 값 이상이면 매수")
-        rsi_threshold = st.slider("RSI 탈출 기준 (매수)", 35, 70, 60, 
+        rsi_threshold = st.slider("RSI 탈출 기준 (매수)", 15, 100, 40, 
                                    help="시그널 구간 후 RSI가 이 값 이상이면 '매수 시그널'로 확정")
         
-        # 발생 시점 차트
-        fig, buy_signals, all_signals = plot_pattern_occurrences(df, selected_pattern, rsi_threshold)
+        # 발생 시점 차트 (골든크로스 필터 적용)
+        fig, buy_signals, all_signals = plot_pattern_occurrences(df, selected_pattern, rsi_threshold, use_golden_cross)
         st.plotly_chart(fig, use_container_width=True)
         
         # 매수 시그널 통계
@@ -950,14 +1008,14 @@ def main():
         st.subheader("📤 매도 시그널 분석 (RSI 과매수)")
         st.caption("조건: RSI > 70 (과매수) 시그널 발생 후 → RSI ≤ X (탈출) 시 매도")
         
-        # RSI 과매수 탈출 기준 슬라이더
-        sell_rsi_threshold = st.slider("RSI 탈출 기준 (매도)", 30, 70, 50, 
+        # RSI 과매수 탈출 기준 슬라이더 (새 기준: 55)
+        sell_rsi_threshold = st.slider("RSI 탈출 기준 (매도)", 10, 70, 55, 
                                         help="과매수 구간 후 RSI가 이 값 이하이면 '매도 시그널'로 확정")
         
-        # RSI 과매수 시그널 찾기 (RSI > 70)
+        # RSI 과매수 시그널 찾기 (RSI > 80) - 새 기준
         overbought_signals = []
         for idx in range(len(df)):
-            if df['rsi'].iloc[idx] > 70:
+            if df['rsi'].iloc[idx] > 80:
                 overbought_signals.append({
                     'date': df.index[idx],
                     'idx': idx,
@@ -975,7 +1033,7 @@ def main():
         for idx in range(len(df)):
             rsi = df['rsi'].iloc[idx]
             
-            if rsi > 70:
+            if rsi > 80:  # 과매수 기준: 80
                 in_overbought = True
                 last_overbought_idx = idx
                 last_overbought_date = df.index[idx]
@@ -1029,7 +1087,7 @@ def main():
         ))
         
         fig_sell.update_layout(
-            title=f"RSI 과매수 시그널 (★ = RSI {sell_rsi_threshold} 이하 탈출 후 매도)",
+            title=f"RSI 과매수 시그널 (RSI > 80 → RSI ≤ {sell_rsi_threshold} 탈출 후 매도)",
             height=500,
             xaxis_title="날짜",
             yaxis_title="가격"
@@ -1067,7 +1125,7 @@ def main():
         
         # ===== 매수 + 매도 통합 차트 =====
         st.subheader("🎯 매수/매도 시그널 통합 차트")
-        st.caption(f"매수: RSI < 35 → RSI ≥ {rsi_threshold} 탈출 | 매도: RSI > 70 → RSI ≤ {sell_rsi_threshold} 탈출 | 손절: -10%")
+        st.caption(f"매수: RSI < 35 → RSI ≥ {rsi_threshold} 탈출 | 매도: RSI > 80 → RSI ≤ {sell_rsi_threshold} 탈출 | 손절: -25%")
         
         fig_combined = go.Figure()
         
@@ -1131,23 +1189,23 @@ def main():
             else:
                 st.metric("신호 비율", "N/A")
         with col4:
-            st.metric("손절 기준", "-15%")
+            st.metric("손절 기준", "-25%")
         
         st.divider()
         
-        # ===== 최종 전략 시뮬레이션 차트 (물타기) =====
+        # ===== 최종 전략 시뮬레이션 차트 (물타기 + 수익일때만 익절) =====
         st.subheader("🎯 최종 전략: 물타기 시뮬레이션")
         st.markdown("""
-        **전략:**
-        - 매수 시그널 발생 시 → 추가 매수 (물타기, 평단가 낮춤)
-        - 매도 조건 (먼저 발생하는 것):
-          1. RSI 매도 시그널 (RSI > 70 → ≤50 탈출) → 전량 매도
-          2. 평균 매수가 대비 -15% 손절 → 전량 매도
+        **전략 (업데이트됨):**
+        - 매수: RSI < 35 → RSI ≥ 40 + 골든크로스(MA40 > MA200)
+        - 매도 조건:
+          1. RSI 매도 시그널 + **수익인 경우만** 익절
+          2. 평균 매수가 대비 -25% 손절 → 전량 매도
         """)
         
-        # 물타기 전략 시뮬레이션
-        all_buy_dates = {bs['signal_date']: bs for bs in buy_signals}
-        all_sell_dates = {ss['signal_date']: ss for ss in sell_signals}
+        # 물타기 전략 시뮬레이션 (confirm_date 기준 + 수익일 때만 익절)
+        all_buy_dates = {bs['confirm_date']: bs for bs in buy_signals}
+        all_sell_dates = {ss['confirm_date']: ss for ss in sell_signals}
         
         trades = []
         positions = []  # 여러 포지션 보유 가능 (물타기)
@@ -1166,14 +1224,18 @@ def main():
                 exit_reason = None
                 exit_price = current_price
                 
-                # 조건 1: RSI 매도 시그널
-                if current_date in all_sell_dates:
-                    exit_reason = "RSI 매도"
-                    exit_price = all_sell_dates[current_date]['signal_price']
+                # 조건 1: 손절 -25% (최우선)
+                if current_return <= -25:
+                    exit_reason = "손절"
                 
-                # 조건 2: 손절 -15%
-                elif current_return <= -15:
-                    exit_reason = "-15% 손절"
+                # 조건 2: RSI 매도 시그널 + 수익인 경우만 익절
+                elif current_date in all_sell_dates:
+                    sell_price = all_sell_dates[current_date]['confirm_price']
+                    sell_return = (sell_price / avg_price - 1) * 100
+                    if sell_return > 0:  # 수익일 때만 매도!
+                        exit_reason = "익절"
+                        exit_price = sell_price
+                    # 손해면 매도하지 않음 (계속 보유)
                 
                 if exit_reason:
                     final_return = (exit_price / avg_price - 1) * 100
@@ -1189,11 +1251,11 @@ def main():
                     })
                     positions = []
             
-            # 매수 시그널 시 추가 매수 (물타기)
+            # 매수 시그널 시 추가 매수 (물타기) - confirm_date 기준
             if current_date in all_buy_dates:
                 positions.append({
                     'date': current_date,
-                    'price': all_buy_dates[current_date]['signal_price']
+                    'price': all_buy_dates[current_date]['confirm_price']
                 })
         
         # 최종 전략 차트

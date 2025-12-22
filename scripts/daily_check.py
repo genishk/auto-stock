@@ -1,5 +1,7 @@
 """
 GitHub Actions용 일일 시그널 체크 스크립트
+- 골든크로스 필터 (MA40 > MA200) 적용
+- RSI 기준: 35/40/80/55
 """
 import sys
 sys.path.insert(0, '.')
@@ -12,6 +14,7 @@ from src.discovery.validated_patterns import VALIDATED_PATTERNS
 from src.utils.helpers import load_config
 from datetime import datetime
 import json
+import pandas as pd
 
 def main():
     config = load_config()
@@ -31,6 +34,11 @@ def main():
     ti = TechnicalIndicators(config.get('indicators', {}))
     df = ti.calculate_all(df)
     
+    # 골든크로스용 이동평균선 추가
+    df['MA40'] = df['Close'].rolling(window=40).mean()
+    df['MA200'] = df['Close'].rolling(window=200).mean()
+    df['golden_cross'] = df['MA40'] > df['MA200']
+    
     # 최신 데이터
     latest = df.iloc[-1]
     current_date = df.index[-1].strftime('%Y-%m-%d')
@@ -43,17 +51,24 @@ def main():
     low_price = latest['Low']
     close_price = latest['Close']
     
+    # 골든크로스 상태 확인
+    current_gc = latest.get('golden_cross', False)
+    if pd.isna(current_gc):
+        current_gc = False
+    ma40 = latest.get('MA40', 0)
+    ma200 = latest.get('MA200', 0)
+    
     # 시그널 체크
     buy_signal = False
     sell_signal = False
     
-    # 매수 시그널: RSI < 35 후 RSI >= 60으로 탈출
+    # 매수 시그널: RSI < 35 후 RSI >= 40으로 탈출 + 골든크로스
     rsi_oversold_threshold = 35
-    rsi_buy_exit_threshold = 60
+    rsi_buy_exit_threshold = 40
     
-    # 매도 시그널: RSI > 70 후 RSI <= 50으로 하락
-    rsi_overbought_threshold = 70
-    rsi_sell_exit_threshold = 50
+    # 매도 시그널: RSI > 80 후 RSI <= 55으로 하락
+    rsi_overbought_threshold = 80
+    rsi_sell_exit_threshold = 55
     
     # 최근 데이터에서 시그널 확인
     lookback = min(30, len(df))
@@ -66,13 +81,14 @@ def main():
         if rsi < rsi_oversold_threshold:
             in_oversold = True
         elif in_oversold and rsi >= rsi_buy_exit_threshold:
-            # 오늘이 탈출 시점인지 확인
-            if i == len(recent_df) - 2:  # 어제 탈출
+            # 오늘이 탈출 시점인지 확인 + 골든크로스 체크
+            gc = recent_df['golden_cross'].iloc[i]
+            if i == len(recent_df) - 2 and (gc if not pd.isna(gc) else False):  # 어제 탈출 + 골든크로스
                 buy_signal = True
             in_oversold = False
     
-    # 오늘 탈출 확인
-    if in_oversold and current_rsi >= rsi_buy_exit_threshold:
+    # 오늘 탈출 확인 + 골든크로스 필터
+    if in_oversold and current_rsi >= rsi_buy_exit_threshold and current_gc:
         buy_signal = True
     
     # 매도 시그널 확인 (RSI 과매수 후 하락)
@@ -106,8 +122,11 @@ def main():
     print('📈 기술 지표')
     print('-' * 40)
     print(f'RSI: {current_rsi:.1f}')
+    print(f'MA40: ${ma40:.2f}' if not pd.isna(ma40) else 'MA40: N/A')
+    print(f'MA200: ${ma200:.2f}' if not pd.isna(ma200) else 'MA200: N/A')
+    print(f'골든크로스: {"🟢 상승장" if current_gc else "🔴 하락장"}')
     print()
-    print(f'매수 기준: RSI < {rsi_oversold_threshold} → RSI >= {rsi_buy_exit_threshold}')
+    print(f'매수 기준: RSI < {rsi_oversold_threshold} → RSI >= {rsi_buy_exit_threshold} + 골든크로스')
     print(f'매도 기준: RSI > {rsi_overbought_threshold} → RSI <= {rsi_sell_exit_threshold}')
     print()
     print('🚨 시그널')
@@ -160,6 +179,7 @@ def main():
             f.write(f'rsi_buy_exit={rsi_buy_exit_threshold}\n')
             f.write(f'rsi_sell_threshold={rsi_overbought_threshold}\n')
             f.write(f'rsi_sell_exit={rsi_sell_exit_threshold}\n')
+            f.write(f'golden_cross={"yes" if current_gc else "no"}\n')
 
 if __name__ == '__main__':
     main()
