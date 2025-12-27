@@ -1,4 +1,4 @@
-name: Daily Stock Signal Check
+name: QQQ Daily Signal Check
 
 on:
   # 매일 자동 실행 (뉴욕 시간 오후 4:30 = UTC 21:30)
@@ -38,14 +38,14 @@ jobs:
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
         subject: |
-          ${{ steps.signal_check.outputs.signal_type == 'buy' && '🟢 매수 시그널!' || 
-              steps.signal_check.outputs.signal_type == 'sell' && '🔴 매도 시그널!' || 
-              '📭 오늘 시그널 없음' }} - Auto-Stock (${{ steps.signal_check.outputs.current_date }})
+          ${{ steps.signal_check.outputs.signal_type == 'buy' && '🟢 QQQ 매수!' || 
+              steps.signal_check.outputs.signal_type == 'sell' && '🔴 QQQ 매도!' || 
+              '📊 QQQ 시그널 없음' }} (${{ steps.signal_check.outputs.current_date }})
         to: ${{ secrets.EMAIL_TO }}
-        from: Auto-Stock Bot <${{ secrets.EMAIL_USERNAME }}>
+        from: Auto-Stock QQQ <${{ secrets.EMAIL_USERNAME }}>
         body: |
           ═══════════════════════════════════════
-          📊 Auto-Stock 일일 리포트
+          📊 QQQ 일일 리포트
           ═══════════════════════════════════════
 
           📅 날짜: ${{ steps.signal_check.outputs.current_date }}
