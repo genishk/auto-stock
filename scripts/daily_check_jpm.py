@@ -1,6 +1,6 @@
 """
-AAPL 일일 시그널 체크 스크립트
-최적화 전략: RSI 35/40 → 60/45, GC OFF (거래 늘린 버전)
+JPM 일일 시그널 체크 스크립트
+최적화 전략: RSI 40/55 → 60/45, GC OFF
 """
 import sys
 sys.path.insert(0, '.')
@@ -14,10 +14,10 @@ from datetime import datetime
 import pandas as pd
 import os
 
-# AAPL 전략 파라미터
-TICKER = "AAPL"
-RSI_OVERSOLD = 35
-RSI_BUY_EXIT = 40
+# JPM 전략 파라미터
+TICKER = "JPM"
+RSI_OVERSOLD = 40
+RSI_BUY_EXIT = 55
 RSI_OVERBOUGHT = 60
 RSI_SELL_EXIT = 45
 USE_GOLDEN_CROSS = False
@@ -99,7 +99,7 @@ def main():
     
     # 결과 출력
     print('=' * 50)
-    print(f'🍎 {TICKER} 일일 리포트')
+    print(f'🏦 {TICKER} 일일 리포트')
     print('=' * 50)
     print()
     print(f'📅 날짜: {current_date}')

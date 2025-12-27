@@ -1,16 +1,15 @@
 """
-AAPL 물타기 전략 대시보드
-streamlit run dashboard_aapl.py --server.port 8504
+WMT 물타기 전략 대시보드
+streamlit run dashboard_wmt.py --server.port 8508
 
-최적화 전략: RSI 35/40 → 60/45, GC OFF (거래 늘린 버전)
-- 거래 19회, 물타기 최대 4회, 수익률 +17.5%
+최적화 전략: RSI 45/55 → 60/55, GC OFF (거래 늘린 안전 버전)
+- 거래 33회, 물타기 최대 4회, 수익률 +5.0%
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from pathlib import Path
 from datetime import datetime
 import sys
@@ -24,19 +23,19 @@ from src.data.validator import DataValidator
 from src.features.technical import TechnicalIndicators
 from src.utils.helpers import load_config
 
-# ===== AAPL 전략 파라미터 =====
-TICKER = "AAPL"
-RSI_OVERSOLD = 35
-RSI_BUY_EXIT = 40
+# ===== WMT 전략 파라미터 =====
+TICKER = "WMT"
+RSI_OVERSOLD = 45
+RSI_BUY_EXIT = 55
 RSI_OVERBOUGHT = 60
-RSI_SELL_EXIT = 45
+RSI_SELL_EXIT = 55
 USE_GOLDEN_CROSS = False
 CAPITAL_PER_ENTRY = 1000
 
 # 페이지 설정
 st.set_page_config(
-    page_title="AAPL 물타기 전략",
-    page_icon="🍎",
+    page_title="WMT 물타기 전략",
+    page_icon="🏪",
     layout="wide"
 )
 
@@ -63,7 +62,6 @@ def load_data():
         indicators = TechnicalIndicators(config.get('indicators', {}))
         df = indicators.calculate_all(df)
         
-        # 골든크로스용 이동평균선
         df['MA40'] = df['Close'].rolling(window=40).mean()
         df['MA200'] = df['Close'].rolling(window=200).mean()
         df['golden_cross'] = df['MA40'] > df['MA200']
@@ -83,27 +81,21 @@ def find_buy_signals(df):
         if pd.isna(rsi):
             continue
         
-        golden_cross_ok = True
-        if USE_GOLDEN_CROSS and 'golden_cross' in df.columns:
-            gc = df['golden_cross'].iloc[idx]
-            golden_cross_ok = gc if not pd.isna(gc) else False
-        
         if rsi < RSI_OVERSOLD:
             in_oversold = True
             last_signal_date = df.index[idx]
             last_signal_price = df['Close'].iloc[idx]
         else:
             if in_oversold and rsi >= RSI_BUY_EXIT and last_signal_date is not None:
-                if golden_cross_ok:
-                    buy_signals.append({
-                        'signal_date': last_signal_date,
-                        'signal_price': last_signal_price,
-                        'confirm_date': df.index[idx],
-                        'confirm_price': df['Close'].iloc[idx],
-                        'rsi_at_confirm': rsi
-                    })
-                    in_oversold = False
-                    last_signal_date = None
+                buy_signals.append({
+                    'signal_date': last_signal_date,
+                    'signal_price': last_signal_price,
+                    'confirm_date': df.index[idx],
+                    'confirm_price': df['Close'].iloc[idx],
+                    'rsi_at_confirm': rsi
+                })
+                in_oversold = False
+                last_signal_date = None
     
     return buy_signals
 
@@ -159,7 +151,7 @@ def simulate_trades(df, buy_signals, sell_signals):
             if current_date in all_sell_dates:
                 sell_price = all_sell_dates[current_date]['confirm_price']
                 sell_return = (sell_price / avg_price - 1) * 100
-                if sell_return > 0:  # profit_only
+                if sell_return > 0:
                     trades.append({
                         'entry_dates': [p['date'] for p in positions],
                         'entry_prices': [p['price'] for p in positions],
@@ -182,10 +174,9 @@ def simulate_trades(df, buy_signals, sell_signals):
 
 
 def main():
-    st.title(f"🍎 {TICKER} 물타기 전략")
+    st.title(f"🏪 {TICKER} 물타기 전략")
     st.caption(f"마지막 업데이트: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     
-    # 사이드바
     st.sidebar.header("⚙️ 전략 설정")
     st.sidebar.info(f"""
     **{TICKER} 최적화 전략**
@@ -197,7 +188,6 @@ def main():
     
     lookback_days = st.sidebar.slider("표시 기간 (일)", 30, 3650, 365)
     
-    # 데이터 로드
     df = load_data()
     
     if df is None:
@@ -207,15 +197,12 @@ def main():
     st.sidebar.success(f"✅ {len(df)}일 데이터 로드")
     st.sidebar.info(f"📅 {df.index[0].date()} ~ {df.index[-1].date()}")
     
-    # 시그널 및 거래 계산
     buy_signals = find_buy_signals(df)
     sell_signals = find_sell_signals(df)
     trades, positions = simulate_trades(df, buy_signals, sell_signals)
     
-    # 탭 구성
     tab1, tab2, tab3 = st.tabs(["📊 현재 상태", "📈 통합 뷰", "📋 전체 성과"])
     
-    # ===== 탭 1: 현재 상태 =====
     with tab1:
         st.header(f"📊 {TICKER} 현재 상태")
         
@@ -252,10 +239,8 @@ def main():
         
         st.divider()
         
-        # 현재 포지션 상세
         if positions:
             st.subheader("💰 현재 보유 포지션")
-            
             n = len(positions)
             total_inv = n * CAPITAL_PER_ENTRY
             total_qty = sum(CAPITAL_PER_ENTRY / p['price'] for p in positions)
@@ -287,7 +272,6 @@ def main():
         
         st.divider()
         
-        # 전략 기준 안내
         st.info(f"""
         **📊 {TICKER} 최적화 전략 (10년 백테스트)**
         
@@ -296,10 +280,9 @@ def main():
         **🛡️ 손절:** 없음 (10년간 승률 100%)
         **📈 골든크로스:** {'✅ 적용중' if USE_GOLDEN_CROSS else '❌ 미적용'}
         
-        *성과: 거래 10회, 물타기 최대 3회, 수익률 +28.1%*
+        *성과: 거래 33회, 물타기 최대 4회, 수익률 +5.0%*
         """)
         
-        # 가격 차트
         st.subheader("📉 가격 차트")
         signal_cutoff = df.index[-1] - pd.Timedelta(days=lookback_days)
         chart_df = df[df.index >= signal_cutoff]
@@ -321,7 +304,6 @@ def main():
             fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df['MA200'],
                                      mode='lines', line=dict(color='purple', width=1.5), name='MA200'))
         
-        # 매수/매도 표시
         filtered_buys = [bs for bs in buy_signals if bs['confirm_date'] >= signal_cutoff]
         filtered_sells = [ss for ss in sell_signals if ss['confirm_date'] >= signal_cutoff]
         
@@ -343,9 +325,7 @@ def main():
         
         st.divider()
         
-        # ===== 시그널 내역 =====
         st.subheader(f"🔔 시그널 내역 (최근 {lookback_days}일)")
-        
         col1, col2 = st.columns(2)
         
         with col1:
@@ -373,10 +353,9 @@ def main():
         
         st.divider()
         
-        # ===== 전략 성과 (기간 내) =====
         filtered_trades = [t for t in trades if t['exit_date'] >= signal_cutoff]
         
-        st.subheader(f"💹 전략 성과 (최근 {lookback_days}일) - 실제 금액 기준")
+        st.subheader(f"💹 전략 성과 (최근 {lookback_days}일)")
         st.caption(f"각 매수마다 동일 금액(${CAPITAL_PER_ENTRY:,}) 투자 가정")
         
         if filtered_trades:
@@ -399,7 +378,6 @@ def main():
             with col5:
                 st.metric("금액 수익률", f"{total_return_period:+.1f}%")
             
-            # 거래 내역
             st.markdown("**📋 거래 내역**")
             trade_df_period = pd.DataFrame([{
                 '기간': f"{t['entry_dates'][0].strftime('%Y-%m-%d')} ~ {t['exit_date'].strftime('%Y-%m-%d')}",
@@ -414,7 +392,6 @@ def main():
         else:
             st.info(f"최근 {lookback_days}일간 완료된 거래 없음")
     
-    # ===== 탭 2: 통합 뷰 =====
     with tab2:
         st.header("📈 통합 뷰 - 모든 거래 액션")
         
@@ -485,7 +462,6 @@ def main():
         else:
             st.info("거래 내역이 없습니다.")
     
-    # ===== 탭 3: 전체 성과 =====
     with tab3:
         st.header("📋 전체 성과")
         

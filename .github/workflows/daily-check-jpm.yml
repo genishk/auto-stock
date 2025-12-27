@@ -1,9 +1,9 @@
-name: AAPL Daily Signal Check
+name: JPM Daily Signal Check
 
 on:
-  # 매일 자동 실행 (뉴욕 시간 오후 4:30 = UTC 21:30)
+  # 매일 자동 실행 (뉴욕 시간 오후 4:45 = UTC 21:45)
   schedule:
-    - cron: '35 21 * * 1-5'  # 월-금, UTC 21:35 (QQQ보다 5분 늦게)
+    - cron: '45 21 * * 1-5'  # 월-금, UTC 21:45 (SMH보다 5분 늦게)
   
   # 수동 실행도 가능
   workflow_dispatch:
@@ -28,7 +28,7 @@ jobs:
     
     - name: Run signal check
       id: signal_check
-      run: python scripts/daily_check_aapl.py
+      run: python scripts/daily_check_jpm.py
     
     - name: Send email notification
       uses: dawidd6/action-send-mail@v3
@@ -38,14 +38,14 @@ jobs:
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
         subject: |
-          ${{ steps.signal_check.outputs.signal_type == 'buy' && '🟢 AAPL 매수!' || 
-              steps.signal_check.outputs.signal_type == 'sell' && '🔴 AAPL 매도!' || 
-              '🍎 AAPL 시그널 없음' }} (${{ steps.signal_check.outputs.current_date }})
+          ${{ steps.signal_check.outputs.signal_type == 'buy' && '🟢 JPM 매수!' || 
+              steps.signal_check.outputs.signal_type == 'sell' && '🔴 JPM 매도!' || 
+              '🏦 JPM 시그널 없음' }} (${{ steps.signal_check.outputs.current_date }})
         to: ${{ secrets.EMAIL_TO }}
-        from: Auto-Stock AAPL <${{ secrets.EMAIL_USERNAME }}>
+        from: Auto-Stock JPM <${{ secrets.EMAIL_USERNAME }}>
         body: |
           ═══════════════════════════════════════
-          🍎 AAPL 일일 리포트
+          🏦 JPM 일일 리포트
           ═══════════════════════════════════════
 
           📅 날짜: ${{ steps.signal_check.outputs.current_date }}
@@ -63,7 +63,7 @@ jobs:
 
           📊 전략 기준 (최적화)
           ─────────────────────────────────────
-          매수: RSI < 35 → RSI >= 40
+          매수: RSI < 40 → RSI >= 55
           매도: RSI > 60 → RSI <= 45 (수익일 때만)
           손절: 없음 (10년 승률 100%)
 

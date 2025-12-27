@@ -1,7 +1,7 @@
 """
 GitHub Actions용 일일 시그널 체크 스크립트
 - 골든크로스 필터 OFF (QQQ 최적)
-- RSI 기준: 35/40/75/50 (최적화)
+- RSI 기준: 35/55/60/45 (거래 늘린 버전)
 """
 import sys
 sys.path.insert(0, '.')
@@ -62,13 +62,13 @@ def main():
     buy_signal = False
     sell_signal = False
     
-    # 매수 시그널: RSI < 35 후 RSI >= 40으로 탈출 (골든크로스 미사용)
+    # 매수 시그널: RSI < 35 후 RSI >= 55으로 탈출 (거래 늘린 버전)
     rsi_oversold_threshold = 35
-    rsi_buy_exit_threshold = 40
+    rsi_buy_exit_threshold = 55
     
-    # 매도 시그널: RSI > 75 후 RSI <= 50으로 하락 (QQQ 최적화)
-    rsi_overbought_threshold = 75
-    rsi_sell_exit_threshold = 50
+    # 매도 시그널: RSI > 60 후 RSI <= 45으로 하락 (거래 늘린 버전)
+    rsi_overbought_threshold = 60
+    rsi_sell_exit_threshold = 45
     
     # 최근 데이터에서 시그널 확인
     lookback = min(30, len(df))

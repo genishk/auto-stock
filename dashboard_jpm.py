@@ -1,9 +1,9 @@
 """
-AAPL 물타기 전략 대시보드
-streamlit run dashboard_aapl.py --server.port 8504
+JPM 물타기 전략 대시보드
+streamlit run dashboard_jpm.py --server.port 8506
 
-최적화 전략: RSI 35/40 → 60/45, GC OFF (거래 늘린 버전)
-- 거래 19회, 물타기 최대 4회, 수익률 +17.5%
+최적화 전략: RSI 40/55 → 60/45, GC OFF
+- 거래 16회, 물타기 최대 5회, 수익률 +8.3%
 """
 
 import streamlit as st
@@ -24,10 +24,10 @@ from src.data.validator import DataValidator
 from src.features.technical import TechnicalIndicators
 from src.utils.helpers import load_config
 
-# ===== AAPL 전략 파라미터 =====
-TICKER = "AAPL"
-RSI_OVERSOLD = 35
-RSI_BUY_EXIT = 40
+# ===== JPM 전략 파라미터 =====
+TICKER = "JPM"
+RSI_OVERSOLD = 40
+RSI_BUY_EXIT = 55
 RSI_OVERBOUGHT = 60
 RSI_SELL_EXIT = 45
 USE_GOLDEN_CROSS = False
@@ -35,8 +35,8 @@ CAPITAL_PER_ENTRY = 1000
 
 # 페이지 설정
 st.set_page_config(
-    page_title="AAPL 물타기 전략",
-    page_icon="🍎",
+    page_title="JPM 물타기 전략",
+    page_icon="🏦",
     layout="wide"
 )
 
@@ -182,7 +182,7 @@ def simulate_trades(df, buy_signals, sell_signals):
 
 
 def main():
-    st.title(f"🍎 {TICKER} 물타기 전략")
+    st.title(f"🏦 {TICKER} 물타기 전략")
     st.caption(f"마지막 업데이트: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     
     # 사이드바
@@ -296,7 +296,7 @@ def main():
         **🛡️ 손절:** 없음 (10년간 승률 100%)
         **📈 골든크로스:** {'✅ 적용중' if USE_GOLDEN_CROSS else '❌ 미적용'}
         
-        *성과: 거래 10회, 물타기 최대 3회, 수익률 +28.1%*
+        *성과: 거래 16회, 물타기 최대 5회, 수익률 +8.3%*
         """)
         
         # 가격 차트
