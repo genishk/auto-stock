@@ -1,0 +1,77 @@
+name: SMH Daily Signal Check
+
+on:
+  # 매일 자동 실행 (뉴욕 시간 오후 4:30 = UTC 21:30)
+  schedule:
+    - cron: '40 21 * * 1-5'  # 월-금, UTC 21:40 (QQQ보다 10분 늦게)
+  
+  # 수동 실행도 가능
+  workflow_dispatch:
+
+jobs:
+  check-signals:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run signal check
+      id: signal_check
+      run: python scripts/daily_check_smh.py
+    
+    - name: Send email notification
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: smtp.gmail.com
+        server_port: 587
+        username: ${{ secrets.EMAIL_USERNAME }}
+        password: ${{ secrets.EMAIL_PASSWORD }}
+        subject: |
+          ${{ steps.signal_check.outputs.signal_type == 'buy' && '🟢 SMH 매수!' || 
+              steps.signal_check.outputs.signal_type == 'sell' && '🔴 SMH 매도!' || 
+              '💎 SMH 시그널 없음' }} (${{ steps.signal_check.outputs.current_date }})
+        to: ${{ secrets.EMAIL_TO }}
+        from: Auto-Stock SMH <${{ secrets.EMAIL_USERNAME }}>
+        body: |
+          ═══════════════════════════════════════
+          💎 SMH 일일 리포트
+          ═══════════════════════════════════════
+
+          📅 날짜: ${{ steps.signal_check.outputs.current_date }}
+
+          💰 가격 정보
+          ─────────────────────────────────────
+          시가: $${{ steps.signal_check.outputs.open_price }}
+          고가: $${{ steps.signal_check.outputs.high_price }}
+          저가: $${{ steps.signal_check.outputs.low_price }}
+          종가: $${{ steps.signal_check.outputs.close_price }}
+
+          📈 기술 지표
+          ─────────────────────────────────────
+          RSI: ${{ steps.signal_check.outputs.current_rsi }}
+
+          📊 전략 기준 (최적화)
+          ─────────────────────────────────────
+          매수: RSI < 35 → RSI >= 40
+          매도: RSI > 75 → RSI <= 45 (수익일 때만)
+          손절: 없음 (10년 승률 100%)
+
+          🚨 시그널
+          ─────────────────────────────────────
+          ${{ steps.signal_check.outputs.signal_type == 'buy' && format('🟢 매수 시그널 발생!\n   매수 가격: ${0}', steps.signal_check.outputs.signal_price) || 
+              steps.signal_check.outputs.signal_type == 'sell' && format('🔴 매도 시그널 발생!\n   매도 가격: ${0}\n   ⚠️ 수익일 때만 매도!', steps.signal_check.outputs.signal_price) || 
+              '📭 오늘은 시그널이 없습니다.' }}
+
+          ═══════════════════════════════════════
+
