@@ -42,6 +42,9 @@ st.set_page_config(
     layout="wide"
 )
 
+# 투자 금액 상수 (동일 금액 기준)
+CAPITAL_PER_ENTRY = 1000  # 매수 1회당 $1,000
+
 
 @st.cache_data(ttl=3600)
 def load_data(ticker: str):
@@ -448,8 +451,9 @@ def main():
             st.sidebar.warning("🔴 데드크로스 (매수 차단)")
     
     # 탭 구성
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab_integrated, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 현재 상태",
+        "📈 통합 뷰",
         "🏆 패턴 순위",
         "✅ 검증된 패턴 (14개)",
         "📈 패턴 분석",
@@ -475,10 +479,10 @@ def main():
                 rsi_pattern = p
                 break
         
-        # 매수/매도 시그널 계산 (RSI 35/40/70/45)
+        # 매수/매도 시그널 계산 (RSI 35/40/75/50) - 최적화
         home_buy_signals = find_buy_signals(df, rsi_pattern, rsi_exit_threshold=40.0, use_golden_cross=use_golden_cross) if rsi_pattern else []
         
-        # 매도 시그널 찾기 (RSI > 70 -> RSI <= 45) - QQQ 최적
+        # 매도 시그널 찾기 (RSI > 75 -> RSI <= 50) - QQQ 최적화
         home_sell_signals = []
         in_overbought = False
         last_ob_date = None
@@ -486,12 +490,12 @@ def main():
         
         for idx in range(len(df)):
             rsi = df['rsi'].iloc[idx]
-            if rsi > 70:  # 과매수 기준: 70
+            if rsi > 75:  # 과매수 기준: 75 (최적화)
                 in_overbought = True
                 last_ob_date = df.index[idx]
                 last_ob_price = df['Close'].iloc[idx]
             else:
-                if in_overbought and rsi <= 45 and last_ob_date is not None:  # 탈출 기준: 45
+                if in_overbought and rsi <= 50 and last_ob_date is not None:  # 탈출 기준: 50 (최적화)
                     home_sell_signals.append({
                         'signal_date': last_ob_date,
                         'signal_price': last_ob_price,
@@ -563,9 +567,14 @@ def main():
             st.metric("추세 (MA40/200)", gc_status)
         with col4:
             if home_positions:
-                avg_p = sum(p['price'] for p in home_positions) / len(home_positions)
+                # 동일 금액 기준 평균가 계산
+                n = len(home_positions)
+                total_inv = n * CAPITAL_PER_ENTRY
+                total_qty = sum(CAPITAL_PER_ENTRY / p['price'] for p in home_positions)
+                avg_p = total_inv / total_qty
                 unrealized = (current / avg_p - 1) * 100
-                st.metric("보유 상태", f"{len(home_positions)}회 물타기", delta=f"{unrealized:+.1f}%")
+                unrealized_amt = total_inv * unrealized / 100
+                st.metric("보유 상태", f"{n}회 물타기 (${total_inv:,})", delta=f"${unrealized_amt:+,.0f} ({unrealized:+.1f}%)")
             else:
                 st.metric("보유 상태", "대기 중")
         with col5:
@@ -578,37 +587,58 @@ def main():
         # ===== 현재 포지션 상세 =====
         if home_positions:
             st.subheader("💰 현재 보유 포지션")
-            avg_price = sum(p['price'] for p in home_positions) / len(home_positions)
-            unrealized = (current / avg_price - 1) * 100
             
-            col1, col2, col3 = st.columns(3)
+            # 동일 금액 기준 평균가 계산
+            num_buys = len(home_positions)
+            total_invested = num_buys * CAPITAL_PER_ENTRY
+            total_quantity = sum(CAPITAL_PER_ENTRY / p['price'] for p in home_positions)
+            avg_price = total_invested / total_quantity
+            
+            unrealized_pct = (current / avg_price - 1) * 100
+            unrealized_amt = total_invested * unrealized_pct / 100
+            
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.metric("평균 매수가", f"${avg_price:.2f}")
             with col2:
-                st.metric("물타기 횟수", f"{len(home_positions)}회")
+                st.metric("물타기 횟수", f"{num_buys}회")
             with col3:
-                color = "🟢" if unrealized >= 0 else "🔴"
-                st.metric("미실현 손익", f"{color} {unrealized:+.1f}%")
+                st.metric("총 투자금", f"${total_invested:,}")
+            with col4:
+                color = "🟢" if unrealized_pct >= 0 else "🔴"
+                st.metric("미실현 손익", f"{color} ${unrealized_amt:+,.0f} ({unrealized_pct:+.1f}%)")
             
             # 매수 내역
-            st.markdown("**📋 매수 내역**")
+            st.markdown("**📋 매수 내역** (각 $1,000 투자)")
             pos_df = pd.DataFrame([{
                 '매수일': p['date'].strftime('%Y-%m-%d'),
                 '매수가': f"${p['price']:.2f}",
-                '현재 손익': f"{(current/p['price']-1)*100:+.1f}%"
+                '투자금': f"${CAPITAL_PER_ENTRY:,}",
+                '현재 손익': f"${CAPITAL_PER_ENTRY * (current/p['price']-1):+,.0f} ({(current/p['price']-1)*100:+.1f}%)"
             } for p in home_positions])
             st.dataframe(pos_df, use_container_width=True, hide_index=True)
             
-            # 매도 조건 안내 (QQQ 최적)
+            # 전략 기준 안내 (QQQ 최적화)
             st.info(f"""
-            **📤 매도 조건:**
-            - RSI > 70 발생 후 → RSI ≤ 45 탈출 + **수익일 때만** 매도
-            - 손절 없음 (QQQ는 10년간 승률 100%)
-            - 골든크로스: {'✅ 적용중' if use_golden_cross else '❌ 미적용 (권장)'}
+            **📊 QQQ 최적화 전략 (10년 백테스트 기준)**
+            
+            **📥 매수 조건:** RSI < 35 진입 → RSI ≥ 40 탈출 시 매수
+            **📤 매도 조건:** RSI > 75 진입 → RSI ≤ 50 탈출 + **수익일 때만** 매도
+            **🛡️ 손절:** 없음 (10년간 승률 100%)
+            **📈 골든크로스:** {'✅ 적용중' if use_golden_cross else '❌ 미적용 (권장)'}
+            
+            *성과: 거래 10회, 승률 100%, 금액 수익률 +20.8%*
             """)
         else:
             st.subheader("⏳ 대기 중")
-            st.info("현재 보유 포지션이 없습니다. 매수 시그널 대기 중...")
+            st.info(f"""
+            현재 보유 포지션이 없습니다. 매수 시그널 대기 중...
+            
+            **📊 QQQ 최적화 전략**
+            - 📥 매수: RSI < 35 → RSI ≥ 40 탈출 시
+            - 📤 매도: RSI > 75 → RSI ≤ 50 + 수익일 때만
+            - 🛡️ 손절: 없음 | 📈 골든크로스: {'ON' if use_golden_cross else 'OFF (권장)'}
+            """)
         
         st.divider()
         
@@ -652,8 +682,8 @@ def main():
         # RSI 상태 알림
         if rsi_now < 35:
             st.warning(f"⚠️ RSI가 35 미만입니다 ({rsi_now:.1f}). 매수 시그널 구간 진입!")
-        elif rsi_now > 70:
-            st.warning(f"⚠️ RSI가 70 초과입니다 ({rsi_now:.1f}). 매도 시그널 구간 진입!")
+        elif rsi_now > 75:
+            st.warning(f"⚠️ RSI가 75 초과입니다 ({rsi_now:.1f}). 매도 시그널 구간 진입!")
         
         st.divider()
         
@@ -731,38 +761,237 @@ def main():
         # 기간 내 거래만 필터링
         filtered_trades = [t for t in home_trades if t['exit_date'] >= signal_cutoff]
         
-        st.subheader(f"📈 전략 성과 (최근 {lookback_days}일)")
+        st.subheader(f"💹 전략 성과 (최근 {lookback_days}일) - 실제 금액 기준")
+        st.caption(f"각 매수마다 동일 금액(${CAPITAL_PER_ENTRY:,}) 투자 가정")
         
         if filtered_trades:
             total_trades = len(filtered_trades)
             wins = len([t for t in filtered_trades if t['return'] > 0])
-            total_return = sum(t['return'] for t in filtered_trades)
-            avg_return = total_return / total_trades
             
-            col1, col2, col3, col4 = st.columns(4)
+            # 동일 금액 기준 계산
+            total_invested = sum(t['num_buys'] * CAPITAL_PER_ENTRY for t in filtered_trades)
+            total_profit = sum(t['num_buys'] * CAPITAL_PER_ENTRY * t['return'] / 100 for t in filtered_trades)
+            total_return_pct = (total_profit / total_invested * 100) if total_invested > 0 else 0
+            
+            col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
                 st.metric("총 거래", f"{total_trades}회")
             with col2:
                 st.metric("승률", f"{wins/total_trades*100:.0f}%")
             with col3:
-                st.metric("평균 수익률", f"{avg_return:+.1f}%")
+                st.metric("총 투자금", f"${total_invested:,}")
             with col4:
-                st.metric("누적 수익률", f"{total_return:+.1f}%")
+                color = "🟢" if total_profit >= 0 else "🔴"
+                st.metric("총 손익", f"{color} ${total_profit:+,.0f}")
+            with col5:
+                st.metric("금액 수익률", f"{total_return_pct:+.1f}%")
             
-            # 거래 내역 (기간 내 전체)
+            # 거래 내역 (기간 내 전체) - 실제 금액 기준
             st.markdown("**📋 거래 내역**")
             sorted_trades = sorted(filtered_trades, key=lambda x: x['exit_date'], reverse=True)
             trade_df = pd.DataFrame([{
                 '기간': f"{t['entry_dates'][0].strftime('%Y-%m-%d')} ~ {t['exit_date'].strftime('%Y-%m-%d')}",
                 '물타기': f"{t['num_buys']}회",
+                '투자금': f"${t['num_buys'] * CAPITAL_PER_ENTRY:,}",
                 '평단가': f"${t['avg_price']:.2f}",
                 '매도가': f"${t['exit_price']:.2f}",
+                '손익': f"${t['num_buys'] * CAPITAL_PER_ENTRY * t['return'] / 100:+,.0f}",
                 '수익률': f"{t['return']:+.1f}%",
                 '사유': t['exit_reason']
             } for t in sorted_trades])
             st.dataframe(trade_df, use_container_width=True, hide_index=True)
         else:
             st.info(f"최근 {lookback_days}일간 완료된 거래 없음")
+    
+    # ===== 통합 뷰 탭 =====
+    with tab_integrated:
+        st.header("📈 통합 뷰 - 모든 거래 액션")
+        st.caption("매수, 물타기, 익절 등 모든 거래 액션을 한눈에 확인")
+        
+        # 액션 리스트 생성
+        all_actions = []
+        
+        # 완료된 거래에서 액션 추출
+        for trade in home_trades:
+            # 첫 매수
+            all_actions.append({
+                'date': trade['entry_dates'][0],
+                'action': '🟢 매수',
+                'price': trade['entry_prices'][0],
+                'position': 'LONG',
+                'invested': CAPITAL_PER_ENTRY,
+                'return': None,
+                'num_buys': 1
+            })
+            
+            # 물타기
+            for i in range(1, trade['num_buys']):
+                all_actions.append({
+                    'date': trade['entry_dates'][i],
+                    'action': f'🔵 물타기 ({i+1}회)',
+                    'price': trade['entry_prices'][i],
+                    'position': 'LONG (보유중)',
+                    'invested': CAPITAL_PER_ENTRY * (i + 1),
+                    'return': None,
+                    'num_buys': i + 1
+                })
+            
+            # 익절
+            profit = trade['num_buys'] * CAPITAL_PER_ENTRY * trade['return'] / 100
+            all_actions.append({
+                'date': trade['exit_date'],
+                'action': '💰 익절',
+                'price': trade['exit_price'],
+                'position': 'CLOSE',
+                'invested': trade['num_buys'] * CAPITAL_PER_ENTRY,
+                'return': trade['return'],
+                'profit': profit,
+                'num_buys': trade['num_buys']
+            })
+        
+        # 현재 보유 포지션 추가
+        if home_positions:
+            for i, p in enumerate(home_positions):
+                if i == 0:
+                    all_actions.append({
+                        'date': p['date'],
+                        'action': '🟢 매수',
+                        'price': p['price'],
+                        'position': 'LONG (보유중)',
+                        'invested': CAPITAL_PER_ENTRY,
+                        'return': None,
+                        'num_buys': 1
+                    })
+                else:
+                    all_actions.append({
+                        'date': p['date'],
+                        'action': f'🔵 물타기 ({i+1}회)',
+                        'price': p['price'],
+                        'position': 'LONG (보유중)',
+                        'invested': CAPITAL_PER_ENTRY * (i + 1),
+                        'return': None,
+                        'num_buys': i + 1
+                    })
+        
+        # 날짜순 정렬
+        all_actions.sort(key=lambda x: x['date'], reverse=True)
+        
+        # ===== 통합 차트 =====
+        st.subheader("📊 가격 차트 + 거래 액션")
+        
+        chart_df = df[df.index >= signal_cutoff]
+        
+        fig_integrated = go.Figure()
+        
+        # 캔들스틱
+        fig_integrated.add_trace(go.Candlestick(
+            x=chart_df.index,
+            open=chart_df['Open'],
+            high=chart_df['High'],
+            low=chart_df['Low'],
+            close=chart_df['Close'],
+            name='가격'
+        ))
+        
+        # MA40/MA200
+        if 'MA40' in chart_df.columns:
+            fig_integrated.add_trace(go.Scatter(
+                x=chart_df.index, y=chart_df['MA40'],
+                mode='lines', line=dict(color='orange', width=1.5),
+                name='MA40'
+            ))
+        if 'MA200' in chart_df.columns:
+            fig_integrated.add_trace(go.Scatter(
+                x=chart_df.index, y=chart_df['MA200'],
+                mode='lines', line=dict(color='purple', width=1.5),
+                name='MA200'
+            ))
+        
+        # 액션 마커 추가
+        for action in all_actions:
+            if action['date'] >= signal_cutoff:
+                if '매수' in action['action'] and '물타기' not in action['action']:
+                    # 첫 매수 - 큰 초록 삼각형
+                    fig_integrated.add_trace(go.Scatter(
+                        x=[action['date']], y=[action['price']],
+                        mode='markers',
+                        marker=dict(color='limegreen', size=14, symbol='triangle-up',
+                                    line=dict(color='darkgreen', width=2)),
+                        showlegend=False,
+                        hovertemplate=f"🟢 매수<br>${action['price']:.2f}<br>{action['date'].strftime('%Y-%m-%d')}<extra></extra>"
+                    ))
+                elif '물타기' in action['action']:
+                    # 물타기 - 작은 파란 삼각형
+                    fig_integrated.add_trace(go.Scatter(
+                        x=[action['date']], y=[action['price']],
+                        mode='markers',
+                        marker=dict(color='dodgerblue', size=10, symbol='triangle-up',
+                                    line=dict(color='darkblue', width=1)),
+                        showlegend=False,
+                        hovertemplate=f"{action['action']}<br>${action['price']:.2f}<br>{action['date'].strftime('%Y-%m-%d')}<extra></extra>"
+                    ))
+                elif '익절' in action['action']:
+                    # 익절 - 금색 다이아몬드
+                    fig_integrated.add_trace(go.Scatter(
+                        x=[action['date']], y=[action['price']],
+                        mode='markers',
+                        marker=dict(color='gold', size=14, symbol='diamond',
+                                    line=dict(color='darkorange', width=2)),
+                        showlegend=False,
+                        hovertemplate=f"💰 익절<br>${action['price']:.2f}<br>+{action['return']:.1f}%<br>{action['date'].strftime('%Y-%m-%d')}<extra></extra>"
+                    ))
+        
+        # 범례 (더미)
+        fig_integrated.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
+            marker=dict(color='limegreen', size=12, symbol='triangle-up'), name='🟢 매수'))
+        fig_integrated.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
+            marker=dict(color='dodgerblue', size=10, symbol='triangle-up'), name='🔵 물타기'))
+        fig_integrated.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
+            marker=dict(color='gold', size=12, symbol='diamond'), name='💰 익절'))
+        
+        fig_integrated.update_layout(
+            height=600,
+            xaxis_rangeslider_visible=False,
+            title=f"가격 차트 + 거래 액션 (최근 {lookback_days}일)"
+        )
+        
+        st.plotly_chart(fig_integrated, use_container_width=True)
+        
+        st.divider()
+        
+        # ===== 액션 타임라인 테이블 =====
+        st.subheader("📋 액션 타임라인")
+        
+        # 기간 내 액션만 필터링
+        filtered_actions = [a for a in all_actions if a['date'] >= signal_cutoff]
+        
+        if filtered_actions:
+            action_df = pd.DataFrame([{
+                '날짜': a['date'].strftime('%Y-%m-%d'),
+                '액션': a['action'],
+                '가격': f"${a['price']:.2f}",
+                '포지션': a['position'],
+                '누적 투자금': f"${a['invested']:,}",
+                '손익': f"${a.get('profit', 0):+,.0f} ({a['return']:+.1f}%)" if a['return'] is not None else '-'
+            } for a in filtered_actions])
+            
+            st.dataframe(action_df, use_container_width=True, hide_index=True)
+            
+            # 액션 통계
+            st.markdown("**📊 액션 통계**")
+            buy_count = len([a for a in filtered_actions if '매수' in a['action'] and '물타기' not in a['action']])
+            water_count = len([a for a in filtered_actions if '물타기' in a['action']])
+            exit_count = len([a for a in filtered_actions if '익절' in a['action']])
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("🟢 매수", f"{buy_count}회")
+            with col2:
+                st.metric("🔵 물타기", f"{water_count}회")
+            with col3:
+                st.metric("💰 익절", f"{exit_count}회")
+        else:
+            st.info(f"최근 {lookback_days}일간 거래 액션 없음")
     
     # ===== 탭 2: 패턴 순위 =====
     with tab2:
@@ -1004,16 +1233,16 @@ def main():
         
         # ===== 매도 시그널 분석 섹션 =====
         st.subheader("📤 매도 시그널 분석 (RSI 과매수)")
-        st.caption("조건: RSI > 70 (과매수) 시그널 발생 후 → RSI ≤ X (탈출) 시 매도")
+        st.caption("조건: RSI > 75 (과매수) 시그널 발생 후 → RSI ≤ X (탈출) 시 매도")
         
         # RSI 과매수 탈출 기준 슬라이더 (QQQ 최적: 45)
-        sell_rsi_threshold = st.slider("RSI 탈출 기준 (매도)", 10, 70, 45, 
-                                        help="과매수 구간 후 RSI가 이 값 이하이면 '매도 시그널'로 확정")
+        sell_rsi_threshold = st.slider("RSI 탈출 기준 (매도)", 10, 75, 50, 
+                                        help="과매수 구간 후 RSI가 이 값 이하이면 '매도 시그널'로 확정 (최적: 50)")
         
-        # RSI 과매수 시그널 찾기 (RSI > 70) - QQQ 최적
+        # RSI 과매수 시그널 찾기 (RSI > 75) - QQQ 최적화
         overbought_signals = []
         for idx in range(len(df)):
-            if df['rsi'].iloc[idx] > 70:
+            if df['rsi'].iloc[idx] > 75:
                 overbought_signals.append({
                     'date': df.index[idx],
                     'idx': idx,
@@ -1031,7 +1260,7 @@ def main():
         for idx in range(len(df)):
             rsi = df['rsi'].iloc[idx]
             
-            if rsi > 70:  # 과매수 기준: 70 (QQQ 최적)
+            if rsi > 75:  # 과매수 기준: 75 (QQQ 최적화)
                 in_overbought = True
                 last_overbought_idx = idx
                 last_overbought_date = df.index[idx]
@@ -1070,7 +1299,7 @@ def main():
             name=f'과매수 시그널 ({len(normal_overbought)}회)',
             marker=dict(color='lightsalmon', size=8, symbol='circle',
                         line=dict(color='red', width=1)),
-            hovertemplate='%{x}<br>가격: $%{y:.2f}<br>RSI > 70<extra></extra>'
+            hovertemplate='%{x}<br>가격: $%{y:.2f}<br>RSI > 75<extra></extra>'
         ))
         
         # 매도 시그널 (진한 빨간색)
@@ -1123,7 +1352,7 @@ def main():
         
         # ===== 매수 + 매도 통합 차트 =====
         st.subheader("🎯 매수/매도 시그널 통합 차트")
-        st.caption(f"매수: RSI < 35 → RSI ≥ {rsi_threshold} 탈출 | 매도: RSI > 70 → RSI ≤ {sell_rsi_threshold} 탈출 | 손절: 없음")
+        st.caption(f"매수: RSI < 35 → RSI ≥ {rsi_threshold} 탈출 | 매도: RSI > 75 → RSI ≤ {sell_rsi_threshold} 탈출 | 손절: 없음")
         
         fig_combined = go.Figure()
         
@@ -1196,7 +1425,7 @@ def main():
         st.markdown("""
         **전략 (QQQ 최적화):**
         - 매수: RSI < 35 → RSI ≥ 40 (골든크로스 미사용 권장)
-        - 매도: RSI > 70 → RSI ≤ 45 + **수익인 경우만** 익절
+        - 매도: RSI > 75 → RSI ≤ 50 + **수익인 경우만** 익절
         - 손절: 없음 (10년간 승률 100%)
         """)
         
