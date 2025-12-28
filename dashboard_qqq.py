@@ -299,10 +299,45 @@ def main():
         *성과: 거래 23회, 물타기 최대 4회, 수익률 +17.9%*
         """)
         
-        # 가격 차트
-        st.subheader("📉 가격 차트")
+        # 가격 차트 + 거래 액션
+        st.subheader("📊 가격 차트 + 거래 액션")
         signal_cutoff = df.index[-1] - pd.Timedelta(days=lookback_days)
         chart_df = df[df.index >= signal_cutoff]
+        
+        # 액션 리스트 생성 (차트용)
+        chart_actions = []
+        for trade in trades:
+            chart_actions.append({
+                'date': trade['entry_dates'][0],
+                'action': '🟢 매수',
+                'price': trade['entry_prices'][0]
+            })
+            for i in range(1, trade['num_buys']):
+                chart_actions.append({
+                    'date': trade['entry_dates'][i],
+                    'action': f'🔵 물타기 ({i+1}회)',
+                    'price': trade['entry_prices'][i]
+                })
+            chart_actions.append({
+                'date': trade['exit_date'],
+                'action': '💰 익절',
+                'price': trade['exit_price'],
+                'return': trade['return']
+            })
+        
+        for i, p in enumerate(positions):
+            if i == 0:
+                chart_actions.append({
+                    'date': p['date'],
+                    'action': '🟢 매수 (보유중)',
+                    'price': p['price']
+                })
+            else:
+                chart_actions.append({
+                    'date': p['date'],
+                    'action': f'🔵 물타기 ({i+1}회, 보유중)',
+                    'price': p['price']
+                })
         
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
@@ -321,30 +356,55 @@ def main():
             fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df['MA200'],
                                      mode='lines', line=dict(color='purple', width=1.5), name='MA200'))
         
-        # 매수/매도 표시
-        filtered_buys = [bs for bs in buy_signals if bs['confirm_date'] >= signal_cutoff]
-        filtered_sells = [ss for ss in sell_signals if ss['confirm_date'] >= signal_cutoff]
+        # 액션 마커 추가
+        for action in chart_actions:
+            if action['date'] >= signal_cutoff:
+                if '매수' in action['action'] and '물타기' not in action['action']:
+                    fig.add_trace(go.Scatter(
+                        x=[action['date']], y=[action['price']],
+                        mode='markers',
+                        marker=dict(color='limegreen', size=14, symbol='triangle-up',
+                                    line=dict(color='darkgreen', width=2)),
+                        showlegend=False,
+                        hovertemplate=f"🟢 매수<br>${action['price']:.2f}<br>{action['date'].strftime('%Y-%m-%d')}<extra></extra>"
+                    ))
+                elif '물타기' in action['action']:
+                    fig.add_trace(go.Scatter(
+                        x=[action['date']], y=[action['price']],
+                        mode='markers',
+                        marker=dict(color='dodgerblue', size=10, symbol='triangle-up',
+                                    line=dict(color='darkblue', width=1)),
+                        showlegend=False,
+                        hovertemplate=f"{action['action']}<br>${action['price']:.2f}<br>{action['date'].strftime('%Y-%m-%d')}<extra></extra>"
+                    ))
+                elif '익절' in action['action']:
+                    fig.add_trace(go.Scatter(
+                        x=[action['date']], y=[action['price']],
+                        mode='markers',
+                        marker=dict(color='gold', size=14, symbol='diamond',
+                                    line=dict(color='darkorange', width=2)),
+                        showlegend=False,
+                        hovertemplate=f"💰 익절<br>${action['price']:.2f}<br>+{action.get('return', 0):.1f}%<br>{action['date'].strftime('%Y-%m-%d')}<extra></extra>"
+                    ))
         
-        for bs in filtered_buys:
-            fig.add_trace(go.Scatter(
-                x=[bs['confirm_date']], y=[bs['confirm_price']],
-                mode='markers', marker=dict(color='limegreen', size=14, symbol='triangle-up'),
-                showlegend=False
-            ))
-        for ss in filtered_sells:
-            fig.add_trace(go.Scatter(
-                x=[ss['confirm_date']], y=[ss['confirm_price']],
-                mode='markers', marker=dict(color='red', size=14, symbol='triangle-down'),
-                showlegend=False
-            ))
+        # 범례 (더미)
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
+            marker=dict(color='limegreen', size=12, symbol='triangle-up'), name='🟢 매수'))
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
+            marker=dict(color='dodgerblue', size=10, symbol='triangle-up'), name='🔵 물타기'))
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
+            marker=dict(color='gold', size=12, symbol='diamond'), name='💰 익절'))
         
-        fig.update_layout(height=500, xaxis_rangeslider_visible=False, title=f"가격 차트 (최근 {lookback_days}일)")
+        fig.update_layout(height=500, xaxis_rangeslider_visible=False, title=f"가격 차트 + 거래 액션 (최근 {lookback_days}일)")
         st.plotly_chart(fig, use_container_width=True)
         
         st.divider()
         
         # ===== 시그널 내역 =====
         st.subheader(f"🔔 시그널 내역 (최근 {lookback_days}일)")
+        
+        filtered_buys = [bs for bs in buy_signals if bs['confirm_date'] >= signal_cutoff]
+        filtered_sells = [ss for ss in sell_signals if ss['confirm_date'] >= signal_cutoff]
         
         col1, col2 = st.columns(2)
         
