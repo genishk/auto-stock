@@ -38,8 +38,11 @@ jobs:
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
         subject: |
-          ${{ steps.signal_check.outputs.signal_type == 'buy' && '🟢 QQQ 매수!' || 
-              steps.signal_check.outputs.signal_type == 'sell' && '🔴 QQQ 매도!' || 
+          ${{ steps.signal_check.outputs.action == 'buy' && '🟢 QQQ 매수!' || 
+              steps.signal_check.outputs.action == 'add' && '🔵 QQQ 물타기!' ||
+              steps.signal_check.outputs.action == 'sell' && '💰 QQQ 익절!' || 
+              steps.signal_check.outputs.signal_type == 'buy' && '📡 QQQ 매수 시그널' ||
+              steps.signal_check.outputs.signal_type == 'sell' && '📡 QQQ 매도 시그널 (액션 없음)' ||
               '📊 QQQ 시그널 없음' }} (${{ steps.signal_check.outputs.current_date }})
         to: ${{ secrets.EMAIL_TO }}
         from: Auto-Stock QQQ <${{ secrets.EMAIL_USERNAME }}>
@@ -52,23 +55,37 @@ jobs:
 
           💰 가격 정보
           ─────────────────────────────────────
-          시가: ${{ steps.signal_check.outputs.open_price }}
-          고가: ${{ steps.signal_check.outputs.high_price }}
-          저가: ${{ steps.signal_check.outputs.low_price }}
-          종가: ${{ steps.signal_check.outputs.close_price }}
+          시가: $${{ steps.signal_check.outputs.open_price }}
+          고가: $${{ steps.signal_check.outputs.high_price }}
+          저가: $${{ steps.signal_check.outputs.low_price }}
+          종가: $${{ steps.signal_check.outputs.close_price }}
 
           📈 기술 지표
           ─────────────────────────────────────
           RSI: ${{ steps.signal_check.outputs.current_rsi }}
 
-          매수 기준: RSI < ${{ steps.signal_check.outputs.rsi_buy_threshold }} → RSI >= ${{ steps.signal_check.outputs.rsi_buy_exit }}
-          매도 기준: RSI > ${{ steps.signal_check.outputs.rsi_sell_threshold }} → RSI <= ${{ steps.signal_check.outputs.rsi_sell_exit }}
-
-          🚨 시그널
+          📊 현재 포지션
           ─────────────────────────────────────
-          ${{ steps.signal_check.outputs.signal_type == 'buy' && format('🟢 매수 시그널 발생!\n   매수 가격: ${0}', steps.signal_check.outputs.signal_price) || 
-              steps.signal_check.outputs.signal_type == 'sell' && format('🔴 매도 시그널 발생!\n   매도 가격: ${0}', steps.signal_check.outputs.signal_price) || 
-              '📭 오늘은 시그널이 없습니다.' }}
+          ${{ steps.signal_check.outputs.has_position == 'yes' && format('보유 상태: {0}회 물타기 (${1} 투자)', steps.signal_check.outputs.position_count, steps.signal_check.outputs.total_invested) || '보유 상태: 대기 중 (포지션 없음)' }}
+          ${{ steps.signal_check.outputs.has_position == 'yes' && format('평균 매수가: ${0}', steps.signal_check.outputs.avg_price) || '' }}
+          ${{ steps.signal_check.outputs.has_position == 'yes' && format('미실현 손익: {0}%', steps.signal_check.outputs.unrealized_pct) || '' }}
+
+          📊 전략 기준 (최적화)
+          ─────────────────────────────────────
+          매수: RSI < ${{ steps.signal_check.outputs.rsi_buy_threshold }} → RSI >= ${{ steps.signal_check.outputs.rsi_buy_exit }}
+          매도: RSI > ${{ steps.signal_check.outputs.rsi_sell_threshold }} → RSI <= ${{ steps.signal_check.outputs.rsi_sell_exit }} (수익일 때만)
+          손절: 없음 (10년 승률 100%)
+
+          🚨 시그널 & 액션
+          ─────────────────────────────────────
+          📡 시그널: ${{ steps.signal_check.outputs.signal_type == 'buy' && '🟢 매수 시그널 발생' || steps.signal_check.outputs.signal_type == 'sell' && '🔴 매도 시그널 발생' || '없음' }}
+          🎯 액션: ${{ steps.signal_check.outputs.action_detail || (steps.signal_check.outputs.has_position == 'yes' && '홀드 (보유 중)' || '대기') }}
+
+          ${{ steps.signal_check.outputs.action == 'buy' && '⚡ 신규 매수 실행하세요!' || '' }}
+          ${{ steps.signal_check.outputs.action == 'add' && '⚡ 물타기 추가 실행하세요!' || '' }}
+          ${{ steps.signal_check.outputs.action == 'sell' && '⚡ 익절 매도 실행하세요!' || '' }}
+          ${{ steps.signal_check.outputs.action == 'skip' && '⏭️ 포지션 없음 - 무시' || '' }}
+          ${{ steps.signal_check.outputs.action == 'hold' && '⏸️ 손실 중 - 홀드' || '' }}
 
           ═══════════════════════════════════════
           

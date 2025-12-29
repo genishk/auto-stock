@@ -1,6 +1,10 @@
 """
 GLD 일일 시그널 체크 스크립트
 최적화 전략: RSI 40/50 → 65/60, GC OFF (거래 늘린 안전 버전)
+
+시그널 vs 액션 구분:
+- 시그널: RSI 기준으로 매수/매도 조건 충족
+- 액션: 실제로 행동해야 하는지 (포지션 유무, 수익 여부 고려)
 """
 import sys
 sys.path.insert(0, '.')
@@ -21,6 +25,111 @@ RSI_BUY_EXIT = 50
 RSI_OVERBOUGHT = 65
 RSI_SELL_EXIT = 60
 USE_GOLDEN_CROSS = False
+CAPITAL_PER_ENTRY = 1000
+
+
+def find_buy_signals(df):
+    """매수 시그널 찾기 (대시보드와 동일 로직)"""
+    buy_signals = []
+    in_oversold = False
+    last_signal_date = None
+    last_signal_price = None
+    
+    for idx in range(len(df)):
+        rsi = df['rsi'].iloc[idx]
+        if pd.isna(rsi):
+            continue
+        
+        if rsi < RSI_OVERSOLD:
+            in_oversold = True
+            last_signal_date = df.index[idx]
+            last_signal_price = df['Close'].iloc[idx]
+        else:
+            if in_oversold and rsi >= RSI_BUY_EXIT and last_signal_date is not None:
+                buy_signals.append({
+                    'signal_date': last_signal_date,
+                    'signal_price': last_signal_price,
+                    'confirm_date': df.index[idx],
+                    'confirm_price': df['Close'].iloc[idx],
+                    'rsi_at_confirm': rsi
+                })
+                in_oversold = False
+                last_signal_date = None
+    
+    return buy_signals
+
+
+def find_sell_signals(df):
+    """매도 시그널 찾기 (대시보드와 동일 로직)"""
+    sell_signals = []
+    in_overbought = False
+    last_signal_date = None
+    last_signal_price = None
+    
+    for idx in range(len(df)):
+        rsi = df['rsi'].iloc[idx]
+        if pd.isna(rsi):
+            continue
+        
+        if rsi > RSI_OVERBOUGHT:
+            in_overbought = True
+            last_signal_date = df.index[idx]
+            last_signal_price = df['Close'].iloc[idx]
+        else:
+            if in_overbought and rsi <= RSI_SELL_EXIT and last_signal_date is not None:
+                sell_signals.append({
+                    'signal_date': last_signal_date,
+                    'signal_price': last_signal_price,
+                    'confirm_date': df.index[idx],
+                    'confirm_price': df['Close'].iloc[idx]
+                })
+                in_overbought = False
+                last_signal_date = None
+    
+    return sell_signals
+
+
+def simulate_trades(df, buy_signals, sell_signals):
+    """거래 시뮬레이션 (대시보드와 동일 로직) - 동일 금액, profit_only"""
+    all_buy_dates = {bs['confirm_date']: bs for bs in buy_signals}
+    all_sell_dates = {ss['confirm_date']: ss for ss in sell_signals}
+    
+    trades = []
+    positions = []
+    
+    for idx in range(len(df)):
+        current_date = df.index[idx]
+        current_price = df['Close'].iloc[idx]
+        
+        if positions:
+            n = len(positions)
+            total_inv = n * CAPITAL_PER_ENTRY
+            total_qty = sum(CAPITAL_PER_ENTRY / p['price'] for p in positions)
+            avg_price = total_inv / total_qty
+            
+            if current_date in all_sell_dates:
+                sell_price = all_sell_dates[current_date]['confirm_price']
+                sell_return = (sell_price / avg_price - 1) * 100
+                if sell_return > 0:  # profit_only
+                    trades.append({
+                        'entry_dates': [p['date'] for p in positions],
+                        'entry_prices': [p['price'] for p in positions],
+                        'avg_price': avg_price,
+                        'num_buys': n,
+                        'exit_date': current_date,
+                        'exit_price': sell_price,
+                        'return': sell_return,
+                        'exit_reason': '익절'
+                    })
+                    positions = []
+        
+        if current_date in all_buy_dates:
+            positions.append({
+                'date': current_date,
+                'price': all_buy_dates[current_date]['confirm_price']
+            })
+    
+    return trades, positions
 
 
 def main():
@@ -59,43 +168,52 @@ def main():
     current_gc = latest.get('golden_cross', False)
     if pd.isna(current_gc):
         current_gc = False
-    ma40 = latest.get('MA40', 0)
-    ma200 = latest.get('MA200', 0)
     
-    # 시그널 체크
-    buy_signal = False
-    sell_signal = False
+    # 시그널 및 거래 시뮬레이션 (대시보드와 동일)
+    buy_signals = find_buy_signals(df)
+    sell_signals = find_sell_signals(df)
+    trades, positions = simulate_trades(df, buy_signals, sell_signals)
     
-    lookback = min(30, len(df))
-    recent_df = df.iloc[-lookback:]
+    # 오늘 시그널 확인
+    today = df.index[-1]
+    buy_signal = any(bs['confirm_date'] == today for bs in buy_signals)
+    sell_signal = any(ss['confirm_date'] == today for ss in sell_signals)
     
-    # 매수 시그널 확인
-    in_oversold = False
-    for i in range(len(recent_df) - 1):
-        rsi = recent_df['rsi'].iloc[i]
-        if rsi < RSI_OVERSOLD:
-            in_oversold = True
-        elif in_oversold and rsi >= RSI_BUY_EXIT:
-            if i == len(recent_df) - 2:
-                buy_signal = True
-            in_oversold = False
+    # 액션 판단 (시그널과 별도)
+    action = 'none'
+    action_detail = ''
     
-    if in_oversold and current_rsi >= RSI_BUY_EXIT:
-        buy_signal = True
+    # 포지션 상태 계산
+    has_position = len(positions) > 0
+    position_count = len(positions)
+    avg_price = 0
+    unrealized_pct = 0
+    total_invested = 0
     
-    # 매도 시그널 확인
-    in_overbought = False
-    for i in range(len(recent_df) - 1):
-        rsi = recent_df['rsi'].iloc[i]
-        if rsi > RSI_OVERBOUGHT:
-            in_overbought = True
-        elif in_overbought and rsi <= RSI_SELL_EXIT:
-            if i == len(recent_df) - 2:
-                sell_signal = True
-            in_overbought = False
+    if has_position:
+        total_invested = position_count * CAPITAL_PER_ENTRY
+        total_qty = sum(CAPITAL_PER_ENTRY / p['price'] for p in positions)
+        avg_price = total_invested / total_qty
+        unrealized_pct = (current_price / avg_price - 1) * 100
     
-    if in_overbought and current_rsi <= RSI_SELL_EXIT:
-        sell_signal = True
+    if buy_signal:
+        if has_position:
+            action = 'add'  # 물타기
+            action_detail = f'물타기 추가 ({position_count}→{position_count+1}회)'
+        else:
+            action = 'buy'  # 신규 매수
+            action_detail = '신규 매수'
+    elif sell_signal:
+        if has_position:
+            if unrealized_pct > 0:
+                action = 'sell'  # 익절 매도
+                action_detail = f'익절 매도 (수익률 {unrealized_pct:+.1f}%)'
+            else:
+                action = 'hold'  # 손실이라 홀드
+                action_detail = f'매도 시그널이지만 손실 중 ({unrealized_pct:+.1f}%) → 홀드'
+        else:
+            action = 'skip'  # 포지션 없음
+            action_detail = '매도 시그널이지만 보유 포지션 없음 → 무시'
     
     # 결과 출력
     print('=' * 50)
@@ -114,27 +232,31 @@ def main():
     print('📈 기술 지표')
     print('-' * 40)
     print(f'RSI: {current_rsi:.1f}')
-    print(f'MA40: ${ma40:.2f}' if not pd.isna(ma40) else 'MA40: N/A')
-    print(f'MA200: ${ma200:.2f}' if not pd.isna(ma200) else 'MA200: N/A')
-    print(f'골든크로스: {"🟢 상승장" if current_gc else "🔴 하락장"}')
     print()
-    print(f'매수 기준: RSI < {RSI_OVERSOLD} → RSI >= {RSI_BUY_EXIT}')
-    print(f'매도 기준: RSI > {RSI_OVERBOUGHT} → RSI <= {RSI_SELL_EXIT}')
-    print(f'손절: 없음 (10년 승률 100%)')
+    print('📊 현재 포지션')
+    print('-' * 40)
+    if has_position:
+        print(f'보유 상태: {position_count}회 물타기 (${total_invested:,} 투자)')
+        print(f'평균 매수가: ${avg_price:.2f}')
+        print(f'미실현 손익: {unrealized_pct:+.1f}%')
+    else:
+        print('보유 상태: 대기 중 (포지션 없음)')
     print()
-    print('🚨 시그널')
+    print('🚨 시그널 & 액션')
     print('-' * 40)
     
     if buy_signal:
-        print(f'🟢 매수 시그널 발생!')
-        print(f'   RSI가 {RSI_OVERSOLD} 이하에서 {RSI_BUY_EXIT} 이상으로 탈출')
-        print(f'   현재 가격: ${current_price:.2f}')
+        print(f'📡 시그널: 🟢 매수 시그널 발생')
+        print(f'🎯 액션: {action_detail}')
     elif sell_signal:
-        print(f'🔴 매도 시그널 발생!')
-        print(f'   RSI가 {RSI_OVERBOUGHT} 이상에서 {RSI_SELL_EXIT} 이하로 하락')
-        print(f'   현재 가격: ${current_price:.2f}')
+        print(f'📡 시그널: 🔴 매도 시그널 발생')
+        print(f'🎯 액션: {action_detail}')
     else:
-        print('📭 오늘은 시그널 없음')
+        print('📡 시그널: 없음')
+        if has_position:
+            print(f'🎯 액션: 홀드 (보유 중)')
+        else:
+            print('🎯 액션: 대기')
     
     print()
     print('=' * 50)
@@ -143,14 +265,27 @@ def main():
     github_output = os.environ.get('GITHUB_OUTPUT', '')
     if github_output:
         with open(github_output, 'a') as f:
+            # 시그널 정보
             if buy_signal:
-                f.write(f'signal_type=buy\n')
-                f.write(f'signal_price={current_price:.2f}\n')
+                f.write('signal_type=buy\n')
             elif sell_signal:
-                f.write(f'signal_type=sell\n')
-                f.write(f'signal_price={current_price:.2f}\n')
+                f.write('signal_type=sell\n')
             else:
                 f.write('signal_type=none\n')
+            
+            # 액션 정보
+            f.write(f'action={action}\n')
+            f.write(f'action_detail={action_detail}\n')
+            
+            # 포지션 정보
+            f.write(f'has_position={"yes" if has_position else "no"}\n')
+            f.write(f'position_count={position_count}\n')
+            f.write(f'avg_price={avg_price:.2f}\n')
+            f.write(f'unrealized_pct={unrealized_pct:.1f}\n')
+            f.write(f'total_invested={total_invested}\n')
+            
+            # 기본 정보
+            f.write(f'signal_price={current_price:.2f}\n')
             f.write(f'current_date={current_date}\n')
             f.write(f'current_rsi={current_rsi:.1f}\n')
             f.write(f'open_price={open_price:.2f}\n')
@@ -162,4 +297,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

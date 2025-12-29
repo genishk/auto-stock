@@ -1,7 +1,10 @@
 """
-GitHub Actions용 일일 시그널 체크 스크립트
-- 골든크로스 필터 OFF (QQQ 최적)
-- RSI 기준: 35/55/60/45 (거래 늘린 버전)
+QQQ 일일 시그널 체크 스크립트
+최적화 전략: RSI 35/55 → 60/45, GC OFF (거래 늘린 버전)
+
+시그널 vs 액션 구분:
+- 시그널: RSI 기준으로 매수/매도 조건 충족
+- 액션: 실제로 행동해야 하는지 (포지션 유무, 수익 여부 고려)
 """
 import sys
 sys.path.insert(0, '.')
@@ -10,31 +13,143 @@ from src.data.cache import DataCache
 from src.data.fetcher import DataFetcher
 from src.data.validator import DataValidator
 from src.features.technical import TechnicalIndicators
-from src.discovery.validated_patterns import VALIDATED_PATTERNS
 from src.utils.helpers import load_config
 from datetime import datetime
-import json
 import pandas as pd
+import os
+
+# QQQ 전략 파라미터
+TICKER = "QQQ"
+RSI_OVERSOLD = 35
+RSI_BUY_EXIT = 55
+RSI_OVERBOUGHT = 60
+RSI_SELL_EXIT = 45
+USE_GOLDEN_CROSS = False
+CAPITAL_PER_ENTRY = 1000
+
+
+def find_buy_signals(df):
+    """매수 시그널 찾기 (대시보드와 동일 로직)"""
+    buy_signals = []
+    in_oversold = False
+    last_signal_date = None
+    last_signal_price = None
+    
+    for idx in range(len(df)):
+        rsi = df['rsi'].iloc[idx]
+        if pd.isna(rsi):
+            continue
+        
+        if rsi < RSI_OVERSOLD:
+            in_oversold = True
+            last_signal_date = df.index[idx]
+            last_signal_price = df['Close'].iloc[idx]
+        else:
+            if in_oversold and rsi >= RSI_BUY_EXIT and last_signal_date is not None:
+                buy_signals.append({
+                    'signal_date': last_signal_date,
+                    'signal_price': last_signal_price,
+                    'confirm_date': df.index[idx],
+                    'confirm_price': df['Close'].iloc[idx],
+                    'rsi_at_confirm': rsi
+                })
+                in_oversold = False
+                last_signal_date = None
+    
+    return buy_signals
+
+
+def find_sell_signals(df):
+    """매도 시그널 찾기 (대시보드와 동일 로직)"""
+    sell_signals = []
+    in_overbought = False
+    last_signal_date = None
+    last_signal_price = None
+    
+    for idx in range(len(df)):
+        rsi = df['rsi'].iloc[idx]
+        if pd.isna(rsi):
+            continue
+        
+        if rsi > RSI_OVERBOUGHT:
+            in_overbought = True
+            last_signal_date = df.index[idx]
+            last_signal_price = df['Close'].iloc[idx]
+        else:
+            if in_overbought and rsi <= RSI_SELL_EXIT and last_signal_date is not None:
+                sell_signals.append({
+                    'signal_date': last_signal_date,
+                    'signal_price': last_signal_price,
+                    'confirm_date': df.index[idx],
+                    'confirm_price': df['Close'].iloc[idx]
+                })
+                in_overbought = False
+                last_signal_date = None
+    
+    return sell_signals
+
+
+def simulate_trades(df, buy_signals, sell_signals):
+    """거래 시뮬레이션 (대시보드와 동일 로직) - 동일 금액, profit_only"""
+    all_buy_dates = {bs['confirm_date']: bs for bs in buy_signals}
+    all_sell_dates = {ss['confirm_date']: ss for ss in sell_signals}
+    
+    trades = []
+    positions = []
+    
+    for idx in range(len(df)):
+        current_date = df.index[idx]
+        current_price = df['Close'].iloc[idx]
+        
+        if positions:
+            n = len(positions)
+            total_inv = n * CAPITAL_PER_ENTRY
+            total_qty = sum(CAPITAL_PER_ENTRY / p['price'] for p in positions)
+            avg_price = total_inv / total_qty
+            
+            if current_date in all_sell_dates:
+                sell_price = all_sell_dates[current_date]['confirm_price']
+                sell_return = (sell_price / avg_price - 1) * 100
+                if sell_return > 0:  # profit_only
+                    trades.append({
+                        'entry_dates': [p['date'] for p in positions],
+                        'entry_prices': [p['price'] for p in positions],
+                        'avg_price': avg_price,
+                        'num_buys': n,
+                        'exit_date': current_date,
+                        'exit_price': sell_price,
+                        'return': sell_return,
+                        'exit_reason': '익절'
+                    })
+                    positions = []
+        
+        if current_date in all_buy_dates:
+            positions.append({
+                'date': current_date,
+                'price': all_buy_dates[current_date]['confirm_price']
+            })
+    
+    return trades, positions
+
 
 def main():
     config = load_config()
-    ticker = 'QQQ'
     
     # 데이터 로드
     cache = DataCache(cache_dir='data/cache', max_age_hours=24)
-    df = cache.get(ticker)
+    df = cache.get(TICKER)
     if df is None:
-        fetcher = DataFetcher([ticker])
+        fetcher = DataFetcher([TICKER])
         data = fetcher.fetch('10y')
-        df = data[ticker]
-        df, _ = DataValidator.validate(df, ticker)
-        cache.set(ticker, df)
+        df = data[TICKER]
+        df, _ = DataValidator.validate(df, TICKER)
+        cache.set(TICKER, df)
     
     # 기술 지표 계산
     ti = TechnicalIndicators(config.get('indicators', {}))
     df = ti.calculate_all(df)
     
-    # 골든크로스용 이동평균선 추가
+    # 골든크로스용 이동평균선
     df['MA40'] = df['Close'].rolling(window=40).mean()
     df['MA200'] = df['Close'].rolling(window=200).mean()
     df['golden_cross'] = df['MA40'] > df['MA200']
@@ -45,68 +160,64 @@ def main():
     current_rsi = latest.get('rsi', 0)
     current_price = latest['Close']
     
-    # 가격 정보
     open_price = latest['Open']
     high_price = latest['High']
     low_price = latest['Low']
     close_price = latest['Close']
     
-    # 골든크로스 상태 확인
     current_gc = latest.get('golden_cross', False)
     if pd.isna(current_gc):
         current_gc = False
-    ma40 = latest.get('MA40', 0)
-    ma200 = latest.get('MA200', 0)
     
-    # 시그널 체크
-    buy_signal = False
-    sell_signal = False
+    # 시그널 및 거래 시뮬레이션 (대시보드와 동일)
+    buy_signals = find_buy_signals(df)
+    sell_signals = find_sell_signals(df)
+    trades, positions = simulate_trades(df, buy_signals, sell_signals)
     
-    # 매수 시그널: RSI < 35 후 RSI >= 55으로 탈출 (거래 늘린 버전)
-    rsi_oversold_threshold = 35
-    rsi_buy_exit_threshold = 55
+    # 오늘 시그널 확인
+    today = df.index[-1]
+    buy_signal = any(bs['confirm_date'] == today for bs in buy_signals)
+    sell_signal = any(ss['confirm_date'] == today for ss in sell_signals)
     
-    # 매도 시그널: RSI > 60 후 RSI <= 45으로 하락 (거래 늘린 버전)
-    rsi_overbought_threshold = 60
-    rsi_sell_exit_threshold = 45
+    # 액션 판단 (시그널과 별도)
+    action = 'none'
+    action_detail = ''
     
-    # 최근 데이터에서 시그널 확인
-    lookback = min(30, len(df))
-    recent_df = df.iloc[-lookback:]
+    # 포지션 상태 계산
+    has_position = len(positions) > 0
+    position_count = len(positions)
+    avg_price = 0
+    unrealized_pct = 0
+    total_invested = 0
     
-    # 매수 시그널 확인 (RSI 과매도 후 탈출)
-    in_oversold = False
-    for i in range(len(recent_df) - 1):
-        rsi = recent_df['rsi'].iloc[i]
-        if rsi < rsi_oversold_threshold:
-            in_oversold = True
-        elif in_oversold and rsi >= rsi_buy_exit_threshold:
-            # 오늘이 탈출 시점인지 확인 (QQQ는 골든크로스 미사용)
-            if i == len(recent_df) - 2:  # 어제 탈출
-                buy_signal = True
-            in_oversold = False
+    if has_position:
+        total_invested = position_count * CAPITAL_PER_ENTRY
+        total_qty = sum(CAPITAL_PER_ENTRY / p['price'] for p in positions)
+        avg_price = total_invested / total_qty
+        unrealized_pct = (current_price / avg_price - 1) * 100
     
-    # 오늘 탈출 확인 (QQQ는 골든크로스 미사용)
-    if in_oversold and current_rsi >= rsi_buy_exit_threshold:
-        buy_signal = True
-    
-    # 매도 시그널 확인 (RSI 과매수 후 하락)
-    in_overbought = False
-    for i in range(len(recent_df) - 1):
-        rsi = recent_df['rsi'].iloc[i]
-        if rsi > rsi_overbought_threshold:
-            in_overbought = True
-        elif in_overbought and rsi <= rsi_sell_exit_threshold:
-            if i == len(recent_df) - 2:
-                sell_signal = True
-            in_overbought = False
-    
-    if in_overbought and current_rsi <= rsi_sell_exit_threshold:
-        sell_signal = True
+    if buy_signal:
+        if has_position:
+            action = 'add'  # 물타기
+            action_detail = f'물타기 추가 ({position_count}→{position_count+1}회)'
+        else:
+            action = 'buy'  # 신규 매수
+            action_detail = '신규 매수'
+    elif sell_signal:
+        if has_position:
+            if unrealized_pct > 0:
+                action = 'sell'  # 익절 매도
+                action_detail = f'익절 매도 (수익률 {unrealized_pct:+.1f}%)'
+            else:
+                action = 'hold'  # 손실이라 홀드
+                action_detail = f'매도 시그널이지만 손실 중 ({unrealized_pct:+.1f}%) → 홀드'
+        else:
+            action = 'skip'  # 포지션 없음
+            action_detail = '매도 시그널이지만 보유 포지션 없음 → 무시'
     
     # 결과 출력
     print('=' * 50)
-    print('📊 Auto-Stock 일일 리포트')
+    print(f'📊 {TICKER} 일일 리포트')
     print('=' * 50)
     print()
     print(f'📅 날짜: {current_date}')
@@ -121,66 +232,75 @@ def main():
     print('📈 기술 지표')
     print('-' * 40)
     print(f'RSI: {current_rsi:.1f}')
-    print(f'MA40: ${ma40:.2f}' if not pd.isna(ma40) else 'MA40: N/A')
-    print(f'MA200: ${ma200:.2f}' if not pd.isna(ma200) else 'MA200: N/A')
-    print(f'골든크로스: {"🟢 상승장" if current_gc else "🔴 하락장"}')
     print()
-    print(f'매수 기준: RSI < {rsi_oversold_threshold} → RSI >= {rsi_buy_exit_threshold}')
-    print(f'매도 기준: RSI > {rsi_overbought_threshold} → RSI <= {rsi_sell_exit_threshold}')
-    print(f'손절: 없음 (QQQ 10년 승률 100%)')
+    print('📊 현재 포지션')
+    print('-' * 40)
+    if has_position:
+        print(f'보유 상태: {position_count}회 물타기 (${total_invested:,} 투자)')
+        print(f'평균 매수가: ${avg_price:.2f}')
+        print(f'미실현 손익: {unrealized_pct:+.1f}%')
+    else:
+        print('보유 상태: 대기 중 (포지션 없음)')
     print()
-    print('🚨 시그널')
+    print('🚨 시그널 & 액션')
     print('-' * 40)
     
     if buy_signal:
-        print(f'🟢 매수 시그널 발생!')
-        print(f'   RSI가 {rsi_oversold_threshold} 이하에서 {rsi_buy_exit_threshold} 이상으로 탈출')
-        print(f'   현재 가격: ${current_price:.2f}')
+        print(f'📡 시그널: 🟢 매수 시그널 발생')
+        print(f'🎯 액션: {action_detail}')
     elif sell_signal:
-        print(f'🔴 매도 시그널 발생!')
-        print(f'   RSI가 {rsi_overbought_threshold} 이상에서 {rsi_sell_exit_threshold} 이하로 하락')
-        print(f'   현재 가격: ${current_price:.2f}')
+        print(f'📡 시그널: 🔴 매도 시그널 발생')
+        print(f'🎯 액션: {action_detail}')
     else:
-        print('📭 오늘은 시그널 없음')
+        print('📡 시그널: 없음')
+        if has_position:
+            print(f'🎯 액션: 홀드 (보유 중)')
+        else:
+            print('🎯 액션: 대기')
     
     print()
     print('=' * 50)
     
-    # GitHub Actions 출력 변수 설정
-    if buy_signal:
-        print('::set-output name=signal_type::buy')
-        print(f'::set-output name=signal_price::{current_price:.2f}')
-    elif sell_signal:
-        print('::set-output name=signal_type::sell')
-        print(f'::set-output name=signal_price::{current_price:.2f}')
-    else:
-        print('::set-output name=signal_type::none')
-    
-    # 환경 변수로도 설정 (새로운 방식)
-    import os
+    # GitHub Actions 환경 변수
     github_output = os.environ.get('GITHUB_OUTPUT', '')
     if github_output:
         with open(github_output, 'a') as f:
+            # 시그널 정보
             if buy_signal:
-                f.write(f'signal_type=buy\n')
-                f.write(f'signal_price={current_price:.2f}\n')
+                f.write('signal_type=buy\n')
             elif sell_signal:
-                f.write(f'signal_type=sell\n')
-                f.write(f'signal_price={current_price:.2f}\n')
+                f.write('signal_type=sell\n')
             else:
                 f.write('signal_type=none\n')
+            
+            # 액션 정보
+            f.write(f'action={action}\n')
+            f.write(f'action_detail={action_detail}\n')
+            
+            # 포지션 정보
+            f.write(f'has_position={"yes" if has_position else "no"}\n')
+            f.write(f'position_count={position_count}\n')
+            f.write(f'avg_price={avg_price:.2f}\n')
+            f.write(f'unrealized_pct={unrealized_pct:.1f}\n')
+            f.write(f'total_invested={total_invested}\n')
+            
+            # 기본 정보
+            f.write(f'signal_price={current_price:.2f}\n')
             f.write(f'current_date={current_date}\n')
             f.write(f'current_rsi={current_rsi:.1f}\n')
             f.write(f'open_price={open_price:.2f}\n')
             f.write(f'high_price={high_price:.2f}\n')
             f.write(f'low_price={low_price:.2f}\n')
             f.write(f'close_price={close_price:.2f}\n')
-            f.write(f'rsi_buy_threshold={rsi_oversold_threshold}\n')
-            f.write(f'rsi_buy_exit={rsi_buy_exit_threshold}\n')
-            f.write(f'rsi_sell_threshold={rsi_overbought_threshold}\n')
-            f.write(f'rsi_sell_exit={rsi_sell_exit_threshold}\n')
+            f.write(f'ticker={TICKER}\n')
+            
+            # 전략 파라미터 (QQQ 워크플로우 호환)
+            f.write(f'rsi_buy_threshold={RSI_OVERSOLD}\n')
+            f.write(f'rsi_buy_exit={RSI_BUY_EXIT}\n')
+            f.write(f'rsi_sell_threshold={RSI_OVERBOUGHT}\n')
+            f.write(f'rsi_sell_exit={RSI_SELL_EXIT}\n')
             f.write(f'golden_cross={"yes" if current_gc else "no"}\n')
+
 
 if __name__ == '__main__':
     main()
-
