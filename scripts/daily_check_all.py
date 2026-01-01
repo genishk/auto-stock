@@ -19,6 +19,9 @@ from datetime import datetime
 import pandas as pd
 import os
 import json
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # ===== 6개 종목 전략 파라미터 =====
 STRATEGIES = {
@@ -430,9 +433,49 @@ def main():
     email_body.append("")
     email_body.append("═══════════════════════════════════════")
     
-    # 파일로 저장
+    # 이메일 본문 문자열
+    email_body_str = '\n'.join(email_body)
+    
+    # 파일로도 저장 (디버깅용)
     with open('email_body.txt', 'w', encoding='utf-8') as f:
-        f.write('\n'.join(email_body))
+        f.write(email_body_str)
+    
+    # 이메일 제목 생성
+    if action_required:
+        actions = [f"{r['ticker']} {r['action_emoji']}" for r in action_required]
+        subject_summary = f"🚨 {', '.join(actions)}"
+    elif signals_only:
+        subject_summary = f"📡 시그널 {len(signals_only)}개 (액션 없음)"
+    else:
+        subject_summary = "✅ 시그널 없음"
+    
+    email_subject = f"Auto-Stock {subject_summary} ({current_date})"
+    
+    # 환경변수에서 이메일 정보 가져오기
+    email_username = os.environ.get('EMAIL_USERNAME', '')
+    email_password = os.environ.get('EMAIL_PASSWORD', '')
+    email_to = os.environ.get('EMAIL_TO', '')
+    
+    if email_username and email_password and email_to:
+        try:
+            # 이메일 전송
+            msg = MIMEMultipart()
+            msg['From'] = f'Auto-Stock 통합 <{email_username}>'
+            msg['To'] = email_to
+            msg['Subject'] = email_subject
+            msg.attach(MIMEText(email_body_str, 'plain', 'utf-8'))
+            
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(email_username, email_password)
+            server.sendmail(email_username, email_to, msg.as_string())
+            server.quit()
+            
+            print(f'✅ 이메일 전송 완료: {email_to}')
+        except Exception as e:
+            print(f'❌ 이메일 전송 실패: {e}')
+    else:
+        print('⚠️ 이메일 환경변수 미설정 (EMAIL_USERNAME, EMAIL_PASSWORD, EMAIL_TO)')
 
 
 if __name__ == '__main__':

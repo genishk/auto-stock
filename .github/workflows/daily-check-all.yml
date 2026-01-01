@@ -27,26 +27,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: Run integrated signal check
-      id: signal_check
+    - name: Run integrated signal check and send email
+      env:
+        EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        EMAIL_TO: ${{ secrets.EMAIL_TO }}
       run: python scripts/daily_check_all.py
-    
-    - name: Read email body
-      id: email_body
-      run: |
-        echo "body<<EOF" >> $GITHUB_OUTPUT
-        cat email_body.txt >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-    
-    - name: Send email notification
-      uses: dawidd6/action-send-mail@v3
-      with:
-        server_address: smtp.gmail.com
-        server_port: 587
-        username: ${{ secrets.EMAIL_USERNAME }}
-        password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: "Auto-Stock ${{ steps.signal_check.outputs.subject_summary }} (${{ steps.signal_check.outputs.current_date }})"
-        to: ${{ secrets.EMAIL_TO }}
-        from: Auto-Stock 통합 <${{ secrets.EMAIL_USERNAME }}>
-        body: ${{ steps.email_body.outputs.body }}
-
