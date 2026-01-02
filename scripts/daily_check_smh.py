@@ -26,6 +26,7 @@ RSI_OVERBOUGHT = 75
 RSI_SELL_EXIT = 45
 USE_GOLDEN_CROSS = False
 CAPITAL_PER_ENTRY = 1000
+MIN_PROFIT_THRESHOLD = 2.0  # 최소 수익률 2%
 
 
 def find_buy_signals(df):
@@ -110,7 +111,7 @@ def simulate_trades(df, buy_signals, sell_signals):
             if current_date in all_sell_dates:
                 sell_price = all_sell_dates[current_date]['confirm_price']
                 sell_return = (sell_price / avg_price - 1) * 100
-                if sell_return > 0:  # profit_only
+                if sell_return >= MIN_PROFIT_THRESHOLD:  # 최소 수익률 2%
                     trades.append({
                         'entry_dates': [p['date'] for p in positions],
                         'entry_prices': [p['price'] for p in positions],
@@ -205,12 +206,12 @@ def main():
             action_detail = '신규 매수'
     elif sell_signal:
         if has_position:
-            if unrealized_pct > 0:
+            if unrealized_pct >= MIN_PROFIT_THRESHOLD:
                 action = 'sell'  # 익절 매도
                 action_detail = f'익절 매도 (수익률 {unrealized_pct:+.1f}%)'
             else:
-                action = 'hold'  # 손실이라 홀드
-                action_detail = f'매도 시그널이지만 손실 중 ({unrealized_pct:+.1f}%) → 홀드'
+                action = 'hold'  # 수익률 미달이라 홀드
+                action_detail = f'매도 시그널이지만 수익률 미달 ({unrealized_pct:+.1f}% < 2%) → 홀드'
         else:
             action = 'skip'  # 포지션 없음
             action_detail = '매도 시그널이지만 보유 포지션 없음 → 무시'

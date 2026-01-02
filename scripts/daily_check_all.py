@@ -1,11 +1,11 @@
 """
 통합 일일 시그널 체크 스크립트
-6개 종목 (QQQ, AAPL, SMH, JPM, WMT, GLD)을 한 번에 체크하고
+9개 종목 (QQQ, AAPL, SMH, JPM, WMT, GLD, XLE, JNJ, MA)을 한 번에 체크하고
 하나의 종합 리포트로 출력
 
 시그널 vs 액션 구분:
 - 시그널: RSI 기준으로 매수/매도 조건 충족
-- 액션: 실제로 행동해야 하는지 (포지션 유무, 수익 여부 고려)
+- 액션: 실제로 행동해야 하는지 (포지션 유무, 수익률 ≥2% 고려)
 """
 import sys
 sys.path.insert(0, '.')
@@ -23,7 +23,10 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# ===== 6개 종목 전략 파라미터 =====
+# ===== 9개 종목 전략 파라미터 =====
+# 최소 수익률 2% 조건 적용
+MIN_PROFIT_THRESHOLD = 2.0  # 최소 수익률 2%
+
 STRATEGIES = {
     'QQQ': {
         'icon': '📊',
@@ -72,6 +75,30 @@ STRATEGIES = {
         'RSI_BUY_EXIT': 50,
         'RSI_OVERBOUGHT': 65,
         'RSI_SELL_EXIT': 60,
+    },
+    'XLE': {
+        'icon': '⛽',
+        'name': 'XLE (에너지)',
+        'RSI_OVERSOLD': 45,
+        'RSI_BUY_EXIT': 50,
+        'RSI_OVERBOUGHT': 60,
+        'RSI_SELL_EXIT': 55,
+    },
+    'JNJ': {
+        'icon': '💊',
+        'name': 'JNJ (존슨앤존슨)',
+        'RSI_OVERSOLD': 45,
+        'RSI_BUY_EXIT': 50,
+        'RSI_OVERBOUGHT': 60,
+        'RSI_SELL_EXIT': 55,
+    },
+    'MA': {
+        'icon': '💳',
+        'name': 'MA (마스터카드)',
+        'RSI_OVERSOLD': 45,
+        'RSI_BUY_EXIT': 50,
+        'RSI_OVERBOUGHT': 60,
+        'RSI_SELL_EXIT': 55,
     },
 }
 
@@ -146,7 +173,7 @@ def find_sell_signals(df, params):
 
 
 def simulate_trades(df, buy_signals, sell_signals):
-    """거래 시뮬레이션 - 동일 금액, profit_only"""
+    """거래 시뮬레이션 - 동일 금액, 최소 수익률 2% 조건"""
     all_buy_dates = {bs['confirm_date']: bs for bs in buy_signals}
     all_sell_dates = {ss['confirm_date']: ss for ss in sell_signals}
     
@@ -166,7 +193,7 @@ def simulate_trades(df, buy_signals, sell_signals):
             if current_date in all_sell_dates:
                 sell_price = all_sell_dates[current_date]['confirm_price']
                 sell_return = (sell_price / avg_price - 1) * 100
-                if sell_return > 0:  # profit_only
+                if sell_return >= MIN_PROFIT_THRESHOLD:  # 최소 수익률 2% 조건
                     trades.append({
                         'entry_dates': [p['date'] for p in positions],
                         'entry_prices': [p['price'] for p in positions],
@@ -257,13 +284,13 @@ def analyze_ticker(ticker, params, config, cache):
             action_emoji = '🟢'
     elif sell_signal:
         if has_position:
-            if unrealized_pct > 0:
+            if unrealized_pct >= MIN_PROFIT_THRESHOLD:
                 action = 'sell'
                 action_detail = f'익절 ({unrealized_pct:+.1f}%)'
                 action_emoji = '💰'
             else:
                 action = 'hold'
-                action_detail = f'손실 중 ({unrealized_pct:+.1f}%) → 홀드'
+                action_detail = f'수익률 미달 ({unrealized_pct:+.1f}% < 2%) → 홀드'
                 action_emoji = '⏸️'
         else:
             action = 'skip'

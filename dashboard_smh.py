@@ -139,7 +139,7 @@ def find_sell_signals(df):
 
 
 def simulate_trades(df, buy_signals, sell_signals):
-    """거래 시뮬레이션 (동일 금액, profit_only)"""
+    """거래 시뮬레이션 (동일 금액, 최소 수익률 2% 이상)"""
     all_buy_dates = {bs['confirm_date']: bs for bs in buy_signals}
     all_sell_dates = {ss['confirm_date']: ss for ss in sell_signals}
     
@@ -159,7 +159,7 @@ def simulate_trades(df, buy_signals, sell_signals):
             if current_date in all_sell_dates:
                 sell_price = all_sell_dates[current_date]['confirm_price']
                 sell_return = (sell_price / avg_price - 1) * 100
-                if sell_return > 0:  # profit_only
+                if sell_return >= 2:  # 최소 수익률 2% 이상
                     trades.append({
                         'entry_dates': [p['date'] for p in positions],
                         'entry_prices': [p['price'] for p in positions],
