@@ -1,6 +1,6 @@
 """
 통합 일일 시그널 체크 스크립트
-9개 종목 (QQQ, AAPL, SMH, JPM, WMT, GLD, XLE, JNJ, MA)을 한 번에 체크하고
+10개 종목 (QQQ, AAPL, SMH, JPM, WMT, GLD, XLE, JNJ, MA, JEPQ)을 한 번에 체크하고
 하나의 종합 리포트로 출력
 
 시그널 vs 액션 구분:
@@ -99,6 +99,14 @@ STRATEGIES = {
         'RSI_BUY_EXIT': 50,
         'RSI_OVERBOUGHT': 60,
         'RSI_SELL_EXIT': 55,
+    },
+    'JEPQ': {
+        'icon': '💰',
+        'name': 'JEPQ (배당 10.5%)',
+        'RSI_OVERSOLD': 40,
+        'RSI_BUY_EXIT': 45,
+        'RSI_OVERBOUGHT': 75,
+        'RSI_SELL_EXIT': 45,
     },
 }
 
