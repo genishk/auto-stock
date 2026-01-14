@@ -2,8 +2,8 @@ name: GLD Daily Signal Check
 
 on:
   # 매일 자동 실행 (뉴욕 시간 오후 4:55 = UTC 21:55)
-  schedule:
-    - cron: '55 21 * * 1-5'  # 월-금, UTC 21:55 (WMT보다 5분 늦게)
+  # schedule:
+  #   - cron: '55 21 * * 1-5'  # 월-금, UTC 21:55 (WMT보다 5분 늦게)
   
   # 수동 실행도 가능
   workflow_dispatch:

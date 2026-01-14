@@ -2,8 +2,8 @@ name: SMH Daily Signal Check
 
 on:
   # 매일 자동 실행 (뉴욕 시간 오후 4:30 = UTC 21:30)
-  schedule:
-    - cron: '40 21 * * 1-5'  # 월-금, UTC 21:40 (QQQ보다 10분 늦게)
+  # schedule:
+  #   - cron: '40 21 * * 1-5'  # 월-금, UTC 21:40 (QQQ보다 10분 늦게)
   
   # 수동 실행도 가능
   workflow_dispatch:
